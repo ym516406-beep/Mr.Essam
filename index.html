@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>منصة الدروس</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@700;800;900&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#EFE9DD;
+    --surface:#FFFFFF;
+    --surface-alt:#F7F3E8;
+    --primary:#16324F;
+    --primary-light:#23456B;
+    --accent:#B8862B;
+    --accent-light:#D9A93E;
+    --success:#3E7C59;
+    --success-bg:#E7F1EA;
+    --danger:#B5482A;
+    --danger-bg:#F7E7E1;
+    --text:#1E1B16;
+    --text-muted:#6B6459;
+    --border:#DED5C2;
+    --radius:14px;
+    --shadow:0 4px 16px rgba(22,50,79,0.10);
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'IBM Plex Sans Arabic', sans-serif;
+    min-height:100vh;
+    line-height:1.6;
+  }
+  h1,h2,h3,.display{
+    font-family:'Tajawal', sans-serif;
+    font-weight:900;
+    color:var(--primary);
+  }
+  #app{min-height:100vh; display:flex; flex-direction:column;}
+
+  /* ---------- top bar ---------- */
+  .topbar{
+    background:var(--primary);
+    color:#fff;
+    padding:16px 24px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    box-shadow:var(--shadow);
+  }
+  .topbar .brand{
+    font-family:'Tajawal', sans-serif;
+    font-weight:900;
+    font-size:20px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .brand .dot{width:10px;height:10px;border-radius:50%;background:var(--accent-light);display:inline-block;}
+  .topbar .user-box{display:flex; align-items:center; gap:14px; font-size:14px;}
+  .role-badge{
+    background:var(--accent);
+    color:var(--primary);
+    font-weight:700;
+    padding:4px 12px;
+    border-radius:999px;
+    font-size:12px;
+  }
+  .btn-ghost{
+    background:transparent;
+    border:1px solid rgba(255,255,255,0.4);
+    color:#fff;
+    padding:8px 16px;
+    border-radius:10px;
+    cursor:pointer;
+    font-family:inherit;
+    font-size:14px;
+    transition:.15s;
+  }
+  .btn-ghost:hover{background:rgba(255,255,255,0.12);}
+
+  /* ---------- layout ---------- */
+  .main-wrap{flex:1; display:flex; width:100%; max-width:1200px; margin:0 auto;}
+  .content{flex:1; padding:28px 24px 60px;}
+
+  .tabs{
+    display:flex; gap:8px; margin-bottom:24px; flex-wrap:wrap;
+    border-bottom:2px solid var(--border);
+    padding-bottom:0;
+  }
+  .tab-btn{
+    background:transparent;
+    border:none;
+    padding:12px 18px;
+    font-family:'Tajawal', sans-serif;
+    font-weight:700;
+    font-size:15px;
+    color:var(--text-muted);
+    cursor:pointer;
+    border-bottom:3px solid transparent;
+    margin-bottom:-2px;
+    transition:.15s;
+  }
+  .tab-btn.active{color:var(--primary); border-bottom-color:var(--accent);}
+  .tab-btn:hover{color:var(--primary);}
+
+  /* ---------- cards / surfaces ---------- */
+  .card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:22px;
+    box-shadow:var(--shadow);
+  }
+  .card + .card{margin-top:16px;}
+  .section-title{font-size:20px; margin-bottom:16px;}
+  .muted{color:var(--text-muted); font-size:14px;}
+
+  /* forms */
+  label{display:block; font-size:13px; font-weight:600; color:var(--primary); margin-bottom:6px;}
+  input, select, textarea{
+    width:100%;
+    padding:11px 14px;
+    border:1.5px solid var(--border);
+    border-radius:10px;
+    font-family:inherit;
+    font-size:15px;
+    background:var(--surface-alt);
+    color:var(--text);
+    transition:.15s;
+  }
+  input:focus, select:focus, textarea:focus{
+    outline:none; border-color:var(--accent); background:#fff;
+  }
+  .field{margin-bottom:14px;}
+  .row2{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+  @media(max-width:600px){.row2{grid-template-columns:1fr;}}
+
+  .btn{
+    background:var(--primary);
+    color:#fff;
+    border:none;
+    padding:12px 22px;
+    border-radius:10px;
+    font-family:'Tajawal', sans-serif;
+    font-weight:700;
+    font-size:15px;
+    cursor:pointer;
+    transition:.15s;
+  }
+  .btn:hover{background:var(--primary-light);}
+  .btn-accent{background:var(--accent); color:var(--primary);}
+  .btn-accent:hover{background:var(--accent-light);}
+  .btn-danger{background:var(--danger-bg); color:var(--danger);}
+  .btn-danger:hover{background:#f0d5c8;}
+  .btn-sm{padding:7px 14px; font-size:13px; border-radius:8px;}
+  .btn-block{width:100%;}
+  .btn:disabled{opacity:.5; cursor:not-allowed;}
+
+  /* auth screen */
+  .auth-wrap{
+    min-height:100vh; display:flex; align-items:center; justify-content:center;
+    padding:24px;
+  }
+  .auth-card{
+    background:var(--surface);
+    border-radius:20px;
+    box-shadow:var(--shadow);
+    width:100%; max-width:440px;
+    padding:36px 32px;
+    border:1px solid var(--border);
+  }
+  .auth-logo{text-align:center; margin-bottom:6px;}
+  .auth-logo .display{font-size:26px;}
+  .auth-sub{text-align:center; color:var(--text-muted); font-size:14px; margin-bottom:24px;}
+  .role-toggle{display:flex; background:var(--surface-alt); border-radius:10px; padding:4px; margin-bottom:20px;}
+  .role-toggle button{
+    flex:1; padding:10px; border:none; background:transparent; border-radius:8px;
+    font-family:'Tajawal'; font-weight:700; cursor:pointer; color:var(--text-muted); font-size:14px;
+  }
+  .role-toggle button.active{background:var(--primary); color:#fff;}
+  .mode-switch{text-align:center; margin-top:18px; font-size:14px; color:var(--text-muted);}
+  .mode-switch a{color:var(--accent); font-weight:700; cursor:pointer; text-decoration:underline;}
+  .alert{
+    padding:11px 14px; border-radius:10px; font-size:13px; margin-bottom:14px;
+  }
+  .alert-error{background:var(--danger-bg); color:var(--danger);}
+  .alert-success{background:var(--success-bg); color:var(--success);}
+
+  /* ticket card - signature element for slots */
+  .ticket{
+    display:flex;
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:12px;
+    overflow:hidden;
+    box-shadow:var(--shadow);
+    margin-bottom:12px;
+  }
+  .ticket-main{flex:1; padding:16px 18px;}
+  .ticket-date{font-family:'Tajawal'; font-weight:800; font-size:16px; color:var(--primary);}
+  .ticket-time{color:var(--text-muted); font-size:14px; margin-top:2px;}
+  .ticket-stub{
+    width:120px;
+    background:var(--surface-alt);
+    border-right:2px dashed var(--border);
+    display:flex; align-items:center; justify-content:center;
+    position:relative;
+    padding:10px;
+  }
+  .ticket-stub::before, .ticket-stub::after{
+    content:''; position:absolute; width:16px; height:16px; border-radius:50%;
+    background:var(--bg); right:-9px;
+  }
+  .ticket-stub::before{top:-9px;}
+  .ticket-stub::after{bottom:-9px;}
+  .status-pill{
+    font-size:12px; font-weight:700; padding:5px 10px; border-radius:999px; white-space:nowrap;
+  }
+  .status-open{background:var(--success-bg); color:var(--success);}
+  .status-booked{background:var(--danger-bg); color:var(--danger);}
+
+  /* video cards */
+  .video-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(300px,1fr)); gap:18px;}
+  .video-card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; box-shadow:var(--shadow);}
+  .video-frame-wrap{position:relative; width:100%; padding-top:56.25%; background:#000;}
+  .video-frame-wrap iframe{position:absolute; inset:0; width:100%; height:100%; border:0;}
+  .video-info{padding:14px 16px;}
+  .video-title{font-family:'Tajawal'; font-weight:800; font-size:15px; color:var(--primary); margin-bottom:4px;}
+  .video-desc{font-size:13px; color:var(--text-muted);}
+  .video-actions{display:flex; gap:8px; margin-top:10px;}
+
+  .empty-state{
+    text-align:center; padding:50px 20px; color:var(--text-muted);
+  }
+  .empty-state .icon{font-size:40px; margin-bottom:12px;}
+
+  .list-item-row{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:12px 0; border-bottom:1px solid var(--border);
+  }
+  .list-item-row:last-child{border-bottom:none;}
+
+  .toast-wrap{position:fixed; top:20px; left:50%; transform:translateX(-50%); z-index:999; display:flex; flex-direction:column; gap:8px;}
+  .toast{
+    padding:12px 20px; border-radius:10px; font-size:14px; font-weight:600;
+    box-shadow:var(--shadow); animation:slideIn .2s ease-out;
+  }
+  .toast.ok{background:var(--success); color:#fff;}
+  .toast.err{background:var(--danger); color:#fff;}
+  @keyframes slideIn{from{opacity:0; transform:translateY(-10px);} to{opacity:1; transform:translateY(0);}}
+
+  .lock-box{
+    text-align:center; padding:50px 24px; color:var(--text-muted);
+  }
+  .lock-box .icon{font-size:42px; margin-bottom:14px;}
+
+  .loading-screen{
+    min-height:100vh; display:flex; align-items:center; justify-content:center;
+    color:var(--text-muted); font-family:'Tajawal'; font-weight:700; font-size:16px;
+  }
+  footer.note{text-align:center; padding:18px; color:var(--text-muted); font-size:12px;}
+
+  /* grade chips / checkbox groups */
+  .chip-group{display:flex; flex-wrap:wrap; gap:8px;}
+  .chip-check{
+    display:inline-flex; align-items:center; gap:6px;
+    background:var(--surface-alt); border:1.5px solid var(--border);
+    border-radius:999px; padding:7px 14px; cursor:pointer; font-size:13px; font-weight:600;
+    transition:.15s;
+  }
+  .chip-check input{width:auto; margin:0;}
+  .chip-check.checked{background:var(--primary); border-color:var(--primary); color:#fff;}
+  .student-pick-list{
+    max-height:220px; overflow-y:auto; border:1.5px solid var(--border); border-radius:10px;
+    background:var(--surface-alt); padding:6px;
+  }
+  .student-pick-row{
+    display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:8px; cursor:pointer;
+  }
+  .student-pick-row:hover{background:#fff;}
+  .student-pick-row input{width:auto;}
+  .audience-tag{
+    display:inline-block; background:var(--surface-alt); color:var(--primary);
+    border:1px solid var(--border); border-radius:999px; padding:3px 10px; font-size:11px; font-weight:700;
+    margin:2px 4px 0 0;
+  }
+</style>
+</head>
+<body>
+<div id="app"><div class="loading-screen">جارِ التحميل…</div></div>
+
+<script>
+(function(){
+  "use strict";
+
+  // بيانات دخول المدرّس الثابتة - مفيش تسجيل حساب مدرّس جديد، الدخول بيتم بالبيانات دي بس. غيّرها لو حبيت
+  var TEACHER_USERNAME = "teacher";
+  var TEACHER_PASSWORD = "Teacher@2026";
+
+  var GRADES = ['G4','G5','G6','G7','G8','G9'];
+  var GRADE_LABELS = {
+    G4:'الصف الرابع الابتدائي',
+    G5:'الصف الخامس الابتدائي',
+    G6:'الصف السادس الابتدائي',
+    G7:'الصف الأول الإعدادي',
+    G8:'الصف الثاني الإعدادي',
+    G9:'الصف الثالث الإعدادي'
+  };
+
+  var state = {
+    ready:false,
+    users:{},
+    videos:[],
+    slots:[],
+    currentUser:null,   // {name,email,password,role,grade}
+    authMode:'login',   // 'login' | 'signup'
+    authRole:'student',
+    dashTab:null,
+    error:''
+  };
+
+  var app = document.getElementById('app');
+
+  // ---------------- storage helpers ----------------
+  async function getShared(key, fallback){
+    try{
+      var res = await window.storage.get(key, true);
+      if(res && typeof res.value === 'string'){
+        return JSON.parse(res.value);
+      }
+      return fallback;
+    }catch(e){
+      return fallback;
+    }
+  }
+  async function setShared(key, value){
+    try{
+      await window.storage.set(key, JSON.stringify(value), true);
+      return true;
+    }catch(e){
+      showToast('حصلت مشكلة في الحفظ، حاول تاني', 'err');
+      return false;
+    }
+  }
+
+  async function loadAll(){
+    var results = await Promise.all([
+      getShared('edu_users', {}),
+      getShared('edu_videos', []),
+      getShared('edu_slots', [])
+    ]);
+    state.users = results[0] || {};
+    state.videos = results[1] || [];
+    state.slots = results[2] || [];
+    state.ready = true;
+  }
+
+  // ---------------- toast ----------------
+  function showToast(msg, type){
+    var wrap = document.querySelector('.toast-wrap');
+    if(!wrap){
+      wrap = document.createElement('div');
+      wrap.className = 'toast-wrap';
+      document.body.appendChild(wrap);
+    }
+    var t = document.createElement('div');
+    t.className = 'toast ' + (type === 'err' ? 'err' : 'ok');
+    t.textContent = msg;
+    wrap.appendChild(t);
+    setTimeout(function(){ t.remove(); }, 3000);
+  }
+
+  // ---------------- utils ----------------
+  function esc(str){
+    var d = document.createElement('div');
+    d.textContent = str == null ? '' : String(str);
+    return d.innerHTML;
+  }
+  function uid(){ return 'id_' + Date.now() + '_' + Math.random().toString(36).slice(2,8); }
+
+  function ytEmbed(url){
+    if(!url) return '';
+    url = url.trim();
+    try{
+      var id = '';
+      if(url.indexOf('youtu.be/') !== -1){
+        id = url.split('youtu.be/')[1].split(/[?&]/)[0];
+      } else if(url.indexOf('watch?v=') !== -1){
+        id = url.split('watch?v=')[1].split('&')[0];
+      } else if(url.indexOf('/embed/') !== -1){
+        return url;
+      } else if(url.indexOf('/shorts/') !== -1){
+        id = url.split('/shorts/')[1].split(/[?&]/)[0];
+      }
+      if(id) return 'https://www.youtube.com/embed/' + id;
+      return url;
+    }catch(e){ return url; }
+  }
+
+  function fmtDate(dateStr){
+    try{
+      var d = new Date(dateStr + 'T00:00:00');
+      return d.toLocaleDateString('ar-EG', {weekday:'long', year:'numeric', month:'long', day:'numeric'});
+    }catch(e){ return dateStr; }
+  }
+
+  function sortedSlots(){
+    return state.slots.slice().sort(function(a,b){
+      return (a.date+a.time).localeCompare(b.date+b.time);
+    });
+  }
+
+  function isFuture(slot){
+    var now = new Date();
+    var slotDt = new Date(slot.date + 'T' + slot.time);
+    return slotDt.getTime() >= now.getTime() - 60*1000;
+  }
+
+  function gradeOptionsHtml(selected){
+    var html = '';
+    GRADES.forEach(function(g){
+      html += '<option value="' + g + '"' + (g === selected ? ' selected' : '') + '>' + GRADE_LABELS[g] + '</option>';
+    });
+    return html;
+  }
+
+  // ---------------- render dispatcher ----------------
+  function render(){
+    if(!state.ready){
+      app.innerHTML = '<div class="loading-screen">جارِ التحميل…</div>';
+      return;
+    }
+    if(!state.currentUser){
+      renderAuth();
+    } else if(state.currentUser.role === 'teacher'){
+      renderTeacherDash();
+    } else {
+      renderStudentDash();
+    }
+  }
+
+  // ================= AUTH SCREEN =================
+  function renderAuth(){
+    var isLogin = state.authMode === 'login';
+
+    var html = '';
+    html += '<div class="auth-wrap"><div class="auth-card">';
+    html += '<div class="auth-logo display">📚 منصة الدروس</div>';
+    html += '<div class="auth-sub">' + (isLogin ? 'سجّل دخولك عشان تكمل' : 'اعمل حساب طالب جديد وابدأ') + '</div>';
+
+    if(state.error){
+      html += '<div class="alert alert-error">' + esc(state.error) + '</div>';
+    }
+
+    html += '<form id="authForm">';
+    if(!isLogin){
+      html += '<div class="field"><label>الاسم</label><input type="text" id="f_name" placeholder="اكتب اسمك" required></div>';
+    }
+    html += '<div class="field"><label>' + (isLogin ? 'البريد الإلكتروني' : 'البريد الإلكتروني') + '</label><input type="text" id="f_email" placeholder="' + (isLogin ? 'البريد الإلكتروني الخاص بيك' : 'example@email.com') + '" required></div>';
+    html += '<div class="field"><label>كلمة المرور</label><input type="password" id="f_pass" placeholder="••••••••" minlength="4" required></div>';
+    if(!isLogin){
+      html += '<div class="field"><label>الصف الدراسي</label><select id="f_grade" required><option value="">اختار صفك الدراسي</option>' + gradeOptionsHtml(null) + '</select></div>';
+    }
+    html += '<button type="submit" class="btn btn-block">' + (isLogin ? 'دخول' : 'إنشاء الحساب') + '</button>';
+    html += '</form>';
+
+    html += '<div class="mode-switch">';
+    if(isLogin){
+      html += 'مفيش حساب لسه؟ <a id="toSignup">اعمل حساب جديد</a>';
+    } else {
+      html += 'عندك حساب؟ <a id="toLogin">سجّل دخولك</a>';
+    }
+    html += '</div>';
+
+    html += '</div></div>';
+    app.innerHTML = html;
+
+    var toSignup = document.getElementById('toSignup');
+    if(toSignup) toSignup.addEventListener('click', function(){
+      state.authMode='signup'; state.error=''; renderAuth();
+    });
+    var toLogin = document.getElementById('toLogin');
+    if(toLogin) toLogin.addEventListener('click', function(){
+      state.authMode='login'; state.error=''; renderAuth();
+    });
+
+    document.getElementById('authForm').addEventListener('submit', function(e){
+      e.preventDefault();
+      if(isLogin){ handleLogin(); } else { handleSignup(); }
+    });
+  }
+
+  async function handleSignup(){
+    var name = document.getElementById('f_name').value.trim();
+    var email = document.getElementById('f_email').value.trim().toLowerCase();
+    var pass = document.getElementById('f_pass').value;
+    var gradeEl = document.getElementById('f_grade');
+    var grade = gradeEl ? gradeEl.value : '';
+
+    if(!name || !email || !pass){
+      state.error = 'من فضلك املأ كل الحقول'; renderAuth(); return;
+    }
+    if(!grade){
+      state.error = 'من فضلك اختار الصف الدراسي'; renderAuth(); return;
+    }
+    if(email === TEACHER_USERNAME.toLowerCase() || state.users[email]){
+      state.error = 'في حساب موجود بالفعل بالإيميل ده'; renderAuth(); return;
+    }
+    var newUser = {name:name, email:email, password:pass, role:'student', hasEverBooked:false, grade:grade};
+    state.users[email] = newUser;
+    var ok = await setShared('edu_users', state.users);
+    if(!ok) return;
+    state.currentUser = newUser;
+    state.error = '';
+    state.dashTab = null;
+    showToast('اتعمل الحساب بنجاح، أهلاً بيك 👋', 'ok');
+    render();
+  }
+
+  function handleLogin(){
+    var input = document.getElementById('f_email').value.trim();
+    var pass = document.getElementById('f_pass').value;
+
+    if(input.toLowerCase() === TEACHER_USERNAME.toLowerCase() && pass === TEACHER_PASSWORD){
+      state.currentUser = {name:'المدرّس', email:TEACHER_USERNAME, role:'teacher'};
+      state.error = '';
+      state.dashTab = null;
+      render();
+      return;
+    }
+
+    var email = input.toLowerCase();
+    var u = state.users[email];
+    if(!u || u.password !== pass){
+      state.error = 'البيانات اللي دخلتها غلط'; renderAuth(); return;
+    }
+    state.currentUser = u;
+    state.error = '';
+    state.dashTab = null;
+    render();
+  }
+
+  function handleLogout(){
+    state.currentUser = null;
+    state.authMode = 'login';
+    state.error = '';
+    render();
+  }
+
+  // ================= SHARED CHROME =================
+  function topbarHtml(){
+    var u = state.currentUser;
+    var roleLabel = u.role === 'teacher' ? 'مدرّس' : 'طالب';
+    var html = '<div class="topbar">';
+    html += '<div class="brand"><span class="dot"></span> منصة الدروس</div>';
+    html += '<div class="user-box"><span class="role-badge">' + roleLabel + (u.role==='student' && u.grade ? ' · ' + GRADE_LABELS[u.grade] : '') + '</span>';
+    html += '<span>' + esc(u.name) + '</span>';
+    html += '<button class="btn-ghost" id="logoutBtn">تسجيل خروج</button></div>';
+    html += '</div>';
+    return html;
+  }
+
+  function bindLogout(){
+    var b = document.getElementById('logoutBtn');
+    if(b) b.addEventListener('click', handleLogout);
+  }
+
+  // ================= TEACHER DASHBOARD =================
+  function renderTeacherDash(){
+    if(!state.dashTab) state.dashTab = 'slots';
+    var html = topbarHtml();
+    html += '<div class="main-wrap"><div class="content">';
+    html += '<div class="tabs">';
+    html += tabBtn('slots','📅 المواعيد');
+    html += tabBtn('videos','🎬 الفيديوهات');
+    html += tabBtn('students','👥 الطلاب');
+    html += '</div>';
+    html += '<div id="tabContent"></div>';
+    html += '</div></div>';
+    app.innerHTML = html;
+    bindLogout();
+    bindTabs(renderTeacherDash);
+
+    var holder = document.getElementById('tabContent');
+    if(state.dashTab === 'slots') holder.innerHTML = teacherSlotsHtml();
+    else if(state.dashTab === 'videos') holder.innerHTML = teacherVideosHtml();
+    else holder.innerHTML = teacherStudentsHtml();
+
+    if(state.dashTab === 'slots') bindTeacherSlots();
+    if(state.dashTab === 'videos') bindTeacherVideos();
+  }
+
+  function tabBtn(key,label){
+    return '<button class="tab-btn ' + (state.dashTab===key?'active':'') + '" data-tab="' + key + '">' + label + '</button>';
+  }
+  function bindTabs(rerenderFn){
+    app.querySelectorAll('.tab-btn').forEach(function(b){
+      b.addEventListener('click', function(){
+        state.dashTab = b.getAttribute('data-tab');
+        rerenderFn();
+      });
+    });
+  }
+
+  function teacherSlotsHtml(){
+    var html = '<div class="card">';
+    html += '<div class="section-title">إضافة ميعاد جديد</div>';
+    html += '<form id="slotForm">';
+    html += '<div class="row2">';
+    html += '<div class="field"><label>التاريخ</label><input type="date" id="s_date" required></div>';
+    html += '<div class="field"><label>الوقت</label><input type="time" id="s_time" required></div>';
+    html += '</div>';
+    html += '<div class="field"><label>مدة الحصة</label><select id="s_dur">';
+    html += '<option value="30">30 دقيقة</option><option value="45">45 دقيقة</option><option value="60" selected>60 دقيقة</option><option value="90">90 دقيقة</option>';
+    html += '</select></div>';
+    html += '<button type="submit" class="btn btn-accent">إضافة الميعاد</button>';
+    html += '</form></div>';
+
+    var slots = sortedSlots();
+    html += '<div class="card"><div class="section-title">كل المواعيد (' + slots.length + ')</div>';
+    if(slots.length === 0){
+      html += emptyState('📅','لسه مفيش مواعيد مضافة');
+    } else {
+      slots.forEach(function(s){
+        var bookedUser = s.studentEmail ? state.users[s.studentEmail] : null;
+        html += '<div class="ticket">';
+        html += '<div class="ticket-main">';
+        html += '<div class="ticket-date">' + fmtDate(s.date) + '</div>';
+        html += '<div class="ticket-time">🕐 ' + esc(s.time) + ' — مدة ' + esc(s.duration) + ' دقيقة</div>';
+        if(bookedUser){
+          html += '<div class="muted" style="margin-top:6px;">محجوز بواسطة: <strong>' + esc(bookedUser.name) + '</strong> (' + esc(bookedUser.email) + ')</div>';
+        }
+        html += '</div>';
+        html += '<div class="ticket-stub">';
+        html += '<div style="text-align:center;">';
+        html += '<div class="status-pill ' + (s.studentEmail ? 'status-booked' : 'status-open') + '">' + (s.studentEmail ? 'محجوز' : 'متاح') + '</div>';
+        html += '<button class="btn btn-sm btn-danger" style="margin-top:10px;" data-del="' + s.id + '">حذف</button>';
+        html += '</div></div></div>';
+      });
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function bindTeacherSlots(){
+    var form = document.getElementById('slotForm');
+    if(form) form.addEventListener('submit', async function(e){
+      e.preventDefault();
+      var date = document.getElementById('s_date').value;
+      var time = document.getElementById('s_time').value;
+      var dur = document.getElementById('s_dur').value;
+      if(!date || !time){ showToast('اختار التاريخ والوقت', 'err'); return; }
+      state.slots.push({id:uid(), date:date, time:time, duration:dur, studentEmail:null});
+      var ok = await setShared('edu_slots', state.slots);
+      if(ok){ showToast('اتضاف الميعاد', 'ok'); renderTeacherDash(); }
+    });
+    app.querySelectorAll('[data-del]').forEach(function(b){
+      b.addEventListener('click', async function(){
+        var id = b.getAttribute('data-del');
+        if(!confirm('متأكد إنك عايز تحذف الميعاد ده؟')) return;
+        state.slots = state.slots.filter(function(s){ return s.id !== id; });
+        var ok = await setShared('edu_slots', state.slots);
+        if(ok){ showToast('اتحذف الميعاد', 'ok'); renderTeacherDash(); }
+      });
+    });
+  }
+
+  function teacherVideosHtml(){
+    var students = Object.values(state.users).filter(function(u){ return u.role === 'student'; });
+
+    var html = '<div class="card">';
+    html += '<div class="section-title">إضافة فيديو جديد</div>';
+    html += '<div class="muted" style="margin-bottom:14px;">ارفع الفيديو على يوتيوب كـ "غير مدرج / Unlisted" وحط رابطه هنا. الطريقة دي بتخلي الفيديو يتشغل بسلاسة تامة مهما كان طويل، من غير ما الموقع يعلق.</div>';
+    html += '<form id="videoForm">';
+    html += '<div class="field"><label>عنوان الفيديو</label><input type="text" id="v_title" placeholder="مثال: شرح الدرس الأول" required></div>';
+    html += '<div class="field"><label>رابط يوتيوب (Unlisted)</label><input type="text" id="v_url" placeholder="https://youtu.be/xxxxxxx" required></div>';
+    html += '<div class="field"><label>وصف مختصر (اختياري)</label><textarea id="v_desc" rows="2" placeholder="نبذة عن محتوى الفيديو"></textarea></div>';
+
+    html += '<div class="field"><label>يتفتح للصفوف دي (اختياري)</label><div class="chip-group" id="gradeChips">';
+    GRADES.forEach(function(g){
+      html += '<label class="chip-check"><input type="checkbox" value="' + g + '" class="gradeChk"> ' + GRADE_LABELS[g] + '</label>';
+    });
+    html += '</div><div class="muted" style="margin-top:6px;">لو مختارتش صف، الفيديو يبقى متاح لكل الطلاب اللي فتحوا قسم الفيديوهات (إلا لو حددت طلاب معينين تحت).</div></div>';
+
+    html += '<div class="field"><label>أو حدد طلاب معينين بالاسم (اختياري)</label>';
+    if(students.length === 0){
+      html += '<div class="muted">لسه مفيش طلاب مسجلين في الموقع.</div>';
+    } else {
+      html += '<div class="student-pick-list">';
+      students.forEach(function(s){
+        html += '<label class="student-pick-row"><input type="checkbox" value="' + esc(s.email) + '" class="studentChk">';
+        html += '<span>' + esc(s.name) + ' <span class="muted">(' + esc(s.email) + (s.grade ? ' — ' + GRADE_LABELS[s.grade] : '') + ')</span></span></label>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+
+    html += '<button type="submit" class="btn btn-accent">إضافة الفيديو</button>';
+    html += '</form></div>';
+
+    html += '<div class="card"><div class="section-title">الفيديوهات المرفوعة (' + state.videos.length + ')</div>';
+    if(state.videos.length === 0){
+      html += emptyState('🎬','لسه مفيش فيديوهات مرفوعة');
+    } else {
+      html += '<div class="video-grid">';
+      state.videos.slice().reverse().forEach(function(v){
+        html += '<div class="video-card">';
+        html += '<div class="video-frame-wrap"><iframe src="' + esc(ytEmbed(v.url)) + '" loading="lazy" allowfullscreen></iframe></div>';
+        html += '<div class="video-info">';
+        html += '<div class="video-title">' + esc(v.title) + '</div>';
+        if(v.desc) html += '<div class="video-desc">' + esc(v.desc) + '</div>';
+        html += '<div style="margin-top:8px;">' + audienceHtml(v) + '</div>';
+        html += '<div class="video-actions"><button class="btn btn-sm btn-danger" data-delvid="' + v.id + '">حذف</button></div>';
+        html += '</div></div>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function audienceHtml(v){
+    var grades = v.grades || [];
+    var studentEmails = v.students || [];
+    if(grades.length === 0 && studentEmails.length === 0){
+      return '<span class="audience-tag">متاح لكل الطلاب</span>';
+    }
+    var html = '';
+    grades.forEach(function(g){
+      html += '<span class="audience-tag">' + GRADE_LABELS[g] + '</span>';
+    });
+    studentEmails.forEach(function(email){
+      var u = state.users[email];
+      html += '<span class="audience-tag">👤 ' + esc(u ? u.name : email) + '</span>';
+    });
+    return html;
+  }
+
+  function bindTeacherVideos(){
+    app.querySelectorAll('.chip-check').forEach(function(chip){
+      var box = chip.querySelector('input');
+      box.addEventListener('change', function(){
+        chip.classList.toggle('checked', box.checked);
+      });
+    });
+
+    var form = document.getElementById('videoForm');
+    if(form) form.addEventListener('submit', async function(e){
+      e.preventDefault();
+      var title = document.getElementById('v_title').value.trim();
+      var url = document.getElementById('v_url').value.trim();
+      var desc = document.getElementById('v_desc').value.trim();
+      if(!title || !url){ showToast('املأ العنوان والرابط', 'err'); return; }
+      var grades = Array.prototype.slice.call(app.querySelectorAll('.gradeChk:checked')).map(function(el){ return el.value; });
+      var students = Array.prototype.slice.call(app.querySelectorAll('.studentChk:checked')).map(function(el){ return el.value; });
+      state.videos.push({id:uid(), title:title, url:url, desc:desc, addedAt:Date.now(), grades:grades, students:students});
+      var ok = await setShared('edu_videos', state.videos);
+      if(ok){ showToast('اتضاف الفيديو', 'ok'); renderTeacherDash(); }
+    });
+    app.querySelectorAll('[data-delvid]').forEach(function(b){
+      b.addEventListener('click', async function(){
+        var id = b.getAttribute('data-delvid');
+        if(!confirm('متأكد إنك عايز تحذف الفيديو ده؟')) return;
+        state.videos = state.videos.filter(function(v){ return v.id !== id; });
+        var ok = await setShared('edu_videos', state.videos);
+        if(ok){ showToast('اتحذف الفيديو', 'ok'); renderTeacherDash(); }
+      });
+    });
+  }
+
+  function teacherStudentsHtml(){
+    var students = Object.values(state.users).filter(function(u){ return u.role === 'student'; });
+    var html = '<div class="card"><div class="section-title">الطلاب المسجلين (' + students.length + ')</div>';
+    if(students.length === 0){
+      html += emptyState('👥','لسه مفيش طلاب مسجلين');
+    } else {
+      students.forEach(function(s){
+        var count = state.slots.filter(function(sl){ return sl.studentEmail === s.email; }).length;
+        html += '<div class="list-item-row">';
+        html += '<div><strong>' + esc(s.name) + '</strong><div class="muted">' + esc(s.email) + (s.grade ? ' · ' + GRADE_LABELS[s.grade] : '') + '</div></div>';
+        html += '<div class="status-pill status-open">' + count + ' حجز</div>';
+        html += '</div>';
+      });
+    }
+    html += '</div>';
+    return html;
+  }
+
+  // ================= STUDENT DASHBOARD =================
+  function renderStudentDash(){
+    if(!state.dashTab) state.dashTab = 'book';
+    var html = topbarHtml();
+    html += '<div class="main-wrap"><div class="content">';
+    html += '<div class="tabs">';
+    html += tabBtn('book','📅 حجز ميعاد');
+    html += tabBtn('mine','🗓️ مواعيدي');
+    html += tabBtn('videos','🎬 الفيديوهات');
+    html += '</div>';
+    html += '<div id="tabContent"></div>';
+    html += '</div></div>';
+    app.innerHTML = html;
+    bindLogout();
+    bindTabs(renderStudentDash);
+
+    var holder = document.getElementById('tabContent');
+    if(state.dashTab === 'book') holder.innerHTML = studentBookHtml();
+    else if(state.dashTab === 'mine') holder.innerHTML = studentMineHtml();
+    else holder.innerHTML = studentVideosHtml();
+
+    if(state.dashTab === 'book') bindStudentBook();
+    if(state.dashTab === 'mine') bindStudentMine();
+  }
+
+  function studentBookHtml(){
+    var open = sortedSlots().filter(function(s){ return !s.studentEmail && isFuture(s); });
+    var html = '<div class="card"><div class="section-title">المواعيد المتاحة</div>';
+    if(open.length === 0){
+      html += emptyState('📅','مفيش مواعيد متاحة دلوقتي، تابع الموقع كل شوية');
+    } else {
+      open.forEach(function(s){
+        html += '<div class="ticket">';
+        html += '<div class="ticket-main">';
+        html += '<div class="ticket-date">' + fmtDate(s.date) + '</div>';
+        html += '<div class="ticket-time">🕐 ' + esc(s.time) + ' — مدة ' + esc(s.duration) + ' دقيقة</div>';
+        html += '</div>';
+        html += '<div class="ticket-stub"><button class="btn btn-sm btn-accent" data-book="' + s.id + '">احجز</button></div>';
+        html += '</div>';
+      });
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function bindStudentBook(){
+    app.querySelectorAll('[data-book]').forEach(function(b){
+      b.addEventListener('click', async function(){
+        var id = b.getAttribute('data-book');
+        var slot = state.slots.find(function(s){ return s.id === id; });
+        if(!slot || slot.studentEmail){ showToast('للأسف الميعاد ده اتحجز', 'err'); renderStudentDash(); return; }
+        slot.studentEmail = state.currentUser.email;
+        var ok1 = await setShared('edu_slots', state.slots);
+        if(!state.currentUser.hasEverBooked){
+          state.currentUser.hasEverBooked = true;
+          state.users[state.currentUser.email] = state.currentUser;
+          await setShared('edu_users', state.users);
+        }
+        if(ok1){ showToast('تم حجز الميعاد بنجاح ✅', 'ok'); renderStudentDash(); }
+      });
+    });
+  }
+
+  function studentMineHtml(){
+    var mine = sortedSlots().filter(function(s){ return s.studentEmail === state.currentUser.email; });
+    var html = '<div class="card"><div class="section-title">مواعيدي المحجوزة</div>';
+    if(mine.length === 0){
+      html += emptyState('🗓️','لسه معملتش أي حجز');
+    } else {
+      mine.forEach(function(s){
+        var future = isFuture(s);
+        html += '<div class="ticket">';
+        html += '<div class="ticket-main">';
+        html += '<div class="ticket-date">' + fmtDate(s.date) + '</div>';
+        html += '<div class="ticket-time">🕐 ' + esc(s.time) + ' — مدة ' + esc(s.duration) + ' دقيقة</div>';
+        html += '</div>';
+        html += '<div class="ticket-stub">';
+        if(future){
+          html += '<button class="btn btn-sm btn-danger" data-cancel="' + s.id + '">إلغاء</button>';
+        } else {
+          html += '<div class="status-pill status-open">تم الحضور</div>';
+        }
+        html += '</div></div>';
+      });
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function bindStudentMine(){
+    app.querySelectorAll('[data-cancel]').forEach(function(b){
+      b.addEventListener('click', async function(){
+        var id = b.getAttribute('data-cancel');
+        if(!confirm('متأكد إنك عايز تلغي الحجز ده؟')) return;
+        var slot = state.slots.find(function(s){ return s.id === id; });
+        if(slot) slot.studentEmail = null;
+        var ok = await setShared('edu_slots', state.slots);
+        if(ok){ showToast('اتلغى الحجز', 'ok'); renderStudentDash(); }
+      });
+    });
+  }
+
+  function videoVisibleToCurrentStudent(v){
+    var grades = v.grades || [];
+    var studentEmails = v.students || [];
+    if(grades.length === 0 && studentEmails.length === 0) return true;
+    var u = state.currentUser;
+    if(u.grade && grades.indexOf(u.grade) !== -1) return true;
+    if(studentEmails.indexOf(u.email) !== -1) return true;
+    return false;
+  }
+
+  function studentVideosHtml(){
+    if(!state.currentUser.hasEverBooked){
+      var html = '<div class="card"><div class="lock-box">';
+      html += '<div class="icon">🔒</div>';
+      html += '<div style="font-family:\'Tajawal\'; font-weight:800; font-size:17px; color:var(--primary); margin-bottom:8px;">الفيديوهات مقفولة</div>';
+      html += '<div class="muted">احجز ميعادك الأول عشان تفتح كل الفيديوهات</div>';
+      html += '<button class="btn btn-accent" id="goBookBtn" style="margin-top:16px;">احجز دلوقتي</button>';
+      html += '</div></div>';
+      setTimeout(function(){
+        var b = document.getElementById('goBookBtn');
+        if(b) b.addEventListener('click', function(){ state.dashTab='book'; renderStudentDash(); });
+      },0);
+      return html;
+    }
+    var visible = state.videos.filter(videoVisibleToCurrentStudent);
+    var html2 = '<div class="card"><div class="section-title">الفيديوهات (' + visible.length + ')</div>';
+    if(visible.length === 0){
+      html2 += emptyState('🎬', state.videos.length === 0 ? 'لسه مفيش فيديوهات مرفوعة من المدرّس' : 'لسه مفيش فيديوهات متاحة لصفك الدراسي');
+    } else {
+      html2 += '<div class="video-grid">';
+      visible.slice().reverse().forEach(function(v){
+        html2 += '<div class="video-card">';
+        html2 += '<div class="video-frame-wrap"><iframe src="' + esc(ytEmbed(v.url)) + '" loading="lazy" allowfullscreen></iframe></div>';
+        html2 += '<div class="video-info">';
+        html2 += '<div class="video-title">' + esc(v.title) + '</div>';
+        if(v.desc) html2 += '<div class="video-desc">' + esc(v.desc) + '</div>';
+        html2 += '</div></div>';
+      });
+      html2 += '</div>';
+    }
+    html2 += '</div>';
+    return html2;
+  }
+
+  function emptyState(icon, text){
+    return '<div class="empty-state"><div class="icon">' + icon + '</div><div>' + esc(text) + '</div></div>';
+  }
+
+  // ---------------- init ----------------
+  loadAll().then(render).catch(function(){
+    app.innerHTML = '<div class="loading-screen">حصلت مشكلة في تحميل البيانات، جرّب تحدّث الصفحة</div>';
+  });
+
+})();
+</script>
+</body>
+</html>
