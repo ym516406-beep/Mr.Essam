@@ -325,45 +325,53 @@
 
   var app = document.getElementById('app');
 
-  // ---------------- storage helpers ----------------
-  async function getShared(key, fallback){
-    try{
-      var res = await window.storage.get(key, true);
-      if(res && typeof res.value === 'string'){
-        return JSON.parse(res.value);
-      }
-      return fallback;
-    }catch(e){
-      return fallback;
-    }
+  // ---------------- backend (Google Apps Script + Google Sheet) ----------------
+  // بعد ما تعمل الـ Apps Script ديبلوي (شرح الخطوات في آخر الرسالة)، حط الرابط هنا:
+  var APPS_SCRIPT_URL = 'PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';
+
+  async function apiGet(action, params){
+    var qs = 'action=' + encodeURIComponent(action);
+    params = params || {};
+    Object.keys(params).forEach(function(k){ qs += '&' + k + '=' + encodeURIComponent(params[k]); });
+    var res = await fetch(APPS_SCRIPT_URL + '?' + qs);
+    return res.json();
   }
-  async function setShared(key, value, attempt){
+
+  async function apiPost(action, payload, attempt){
     attempt = attempt || 1;
+    payload = payload || {};
+    payload.action = action;
     try{
-      var res = await window.storage.set(key, JSON.stringify(value), true);
-      if(!res){ throw new Error('empty response'); }
-      return true;
+      var res = await fetch(APPS_SCRIPT_URL, {
+        method:'POST',
+        // text/plain مهم عشان يتجنب preflight/CORS بتاع Apps Script
+        headers:{'Content-Type':'text/plain;charset=utf-8'},
+        body: JSON.stringify(payload)
+      });
+      var data = await res.json();
+      return data;
     }catch(e){
       if(attempt < 4){
-        // retry a few times with a short delay before giving up - handles transient
-        // network hiccups / write conflicts instead of failing on the first try
         await new Promise(function(r){ setTimeout(r, 400 * attempt); });
-        return setShared(key, value, attempt + 1);
+        return apiPost(action, payload, attempt + 1);
       }
-      showToast('حصلت مشكلة في الحفظ، حاول تاني', 'err');
-      return false;
+      return {ok:false, error:'حصلت مشكلة في الاتصال، حاول تاني'};
     }
   }
 
   async function loadAll(){
-    var results = await Promise.all([
-      getShared('edu_users', {}),
-      getShared('edu_videos', []),
-      getShared('edu_slots', [])
-    ]);
-    state.users = results[0] || {};
-    state.videos = results[1] || [];
-    state.slots = results[2] || [];
+    try{
+      var res = await apiGet('load');
+      if(res && res.ok){
+        state.users = res.users || {};
+        state.videos = res.videos || [];
+        state.slots = res.slots || [];
+      } else {
+        showToast('حصلت مشكلة في تحميل البيانات', 'err');
+      }
+    }catch(e){
+      showToast('حصلت مشكلة في الاتصال، تأكد من النت', 'err');
+    }
     state.ready = true;
   }
 
@@ -523,35 +531,29 @@
     if(!grade){
       state.error = 'من فضلك اختار الصف الدراسي'; renderAuth(); return;
     }
-    // re-fetch the latest saved users first, in case another student registered
-    // in the meantime - otherwise saving here could overwrite their account
-    var freshUsers = await getShared('edu_users', {});
-    state.users = freshUsers || {};
-
-    if(email === TEACHER_USERNAME.toLowerCase() || state.users[email]){
+    if(email === TEACHER_USERNAME.toLowerCase()){
       state.error = 'في حساب موجود بالفعل بالإيميل ده'; renderAuth(); return;
     }
-    var newUser = {name:name, email:email, phone:phone, password:pass, role:'student', hasEverBooked:false, grade:grade};
-    state.users[email] = newUser;
-    var ok = await setShared('edu_users', state.users);
-    if(!ok){ renderAuth(); return; }
 
-    // double-check the account actually made it to storage before letting the
-    // student in - avoids the account "working" only until the page is closed
-    var verifyUsers = await getShared('edu_users', {});
-    if(!verifyUsers || !verifyUsers[email]){
-      state.error = 'حصلت مشكلة في حفظ الحساب، حاول تاني'; renderAuth(); return;
+    // التسجيل بيتم من جوه السيرفر نفسه بقفل (lock) - يعني حتى لو طالبين
+    // سجّلوا بنفس اللحظة بالظبط، السيرفر بيعالجهم واحد ورا التاني ومفيش
+    // احتمال إن حساب يضيع أو يتكتب فوق التاني
+    var res = await apiPost('register', {name:name, email:email, phone:phone, password:pass, grade:grade});
+    if(!res || !res.ok){
+      state.error = (res && res.error) ? res.error : 'حصلت مشكلة في حفظ الحساب، حاول تاني';
+      renderAuth();
+      return;
     }
-    state.users = verifyUsers;
 
-    state.currentUser = newUser;
+    state.users[email] = res.user;
+    state.currentUser = res.user;
     state.error = '';
     state.dashTab = null;
     showToast('اتعمل الحساب بنجاح، أهلاً بيك 👋', 'ok');
     render();
   }
 
-  function handleLogin(){
+  async function handleLogin(){
     var input = document.getElementById('f_email').value.trim();
     var pass = document.getElementById('f_pass').value;
 
@@ -559,16 +561,21 @@
       state.currentUser = {name:'المدرّس', email:TEACHER_USERNAME, role:'teacher'};
       state.error = '';
       state.dashTab = null;
+      // نجيب أحدث نسخة من البيانات لما المدرّس يدخل عشان يشوف كل حاجة محدثة
+      await loadAll();
       render();
       return;
     }
 
     var email = input.toLowerCase();
-    var u = state.users[email];
-    if(!u || u.password !== pass){
-      state.error = 'البيانات اللي دخلتها غلط'; renderAuth(); return;
+    var res = await apiPost('login', {email:email, password:pass});
+    if(!res || !res.ok){
+      state.error = (res && res.error) ? res.error : 'البيانات اللي دخلتها غلط';
+      renderAuth();
+      return;
     }
-    state.currentUser = u;
+    state.users[email] = res.user;
+    state.currentUser = res.user;
     state.error = '';
     state.dashTab = null;
     render();
@@ -686,16 +693,18 @@
       var dur = document.getElementById('s_dur').value;
       if(!date || !time){ showToast('اختار التاريخ والوقت', 'err'); return; }
       state.slots.push({id:uid(), date:date, time:time, duration:dur, studentEmail:null});
-      var ok = await setShared('edu_slots', state.slots);
-      if(ok){ showToast('اتضاف الميعاد', 'ok'); renderTeacherDash(); }
+      var res = await apiPost('setSlots', {slots: state.slots});
+      if(res && res.ok){ showToast('اتضاف الميعاد', 'ok'); renderTeacherDash(); }
+      else { showToast('حصلت مشكلة في الحفظ، حاول تاني', 'err'); }
     });
     app.querySelectorAll('[data-del]').forEach(function(b){
       b.addEventListener('click', async function(){
         var id = b.getAttribute('data-del');
         if(!confirm('متأكد إنك عايز تحذف الميعاد ده؟')) return;
         state.slots = state.slots.filter(function(s){ return s.id !== id; });
-        var ok = await setShared('edu_slots', state.slots);
-        if(ok){ showToast('اتحذف الميعاد', 'ok'); renderTeacherDash(); }
+        var res = await apiPost('setSlots', {slots: state.slots});
+        if(res && res.ok){ showToast('اتحذف الميعاد', 'ok'); renderTeacherDash(); }
+        else { showToast('حصلت مشكلة في الحفظ، حاول تاني', 'err'); }
       });
     });
   }
@@ -789,16 +798,18 @@
       var grades = Array.prototype.slice.call(app.querySelectorAll('.gradeChk:checked')).map(function(el){ return el.value; });
       var students = Array.prototype.slice.call(app.querySelectorAll('.studentChk:checked')).map(function(el){ return el.value; });
       state.videos.push({id:uid(), title:title, url:url, desc:desc, addedAt:Date.now(), grades:grades, students:students});
-      var ok = await setShared('edu_videos', state.videos);
-      if(ok){ showToast('اتضاف الفيديو', 'ok'); renderTeacherDash(); }
+      var res = await apiPost('setVideos', {videos: state.videos});
+      if(res && res.ok){ showToast('اتضاف الفيديو', 'ok'); renderTeacherDash(); }
+      else { showToast('حصلت مشكلة في الحفظ، حاول تاني', 'err'); }
     });
     app.querySelectorAll('[data-delvid]').forEach(function(b){
       b.addEventListener('click', async function(){
         var id = b.getAttribute('data-delvid');
         if(!confirm('متأكد إنك عايز تحذف الفيديو ده؟')) return;
         state.videos = state.videos.filter(function(v){ return v.id !== id; });
-        var ok = await setShared('edu_videos', state.videos);
-        if(ok){ showToast('اتحذف الفيديو', 'ok'); renderTeacherDash(); }
+        var res = await apiPost('setVideos', {videos: state.videos});
+        if(res && res.ok){ showToast('اتحذف الفيديو', 'ok'); renderTeacherDash(); }
+        else { showToast('حصلت مشكلة في الحفظ، حاول تاني', 'err'); }
       });
     });
   }
@@ -861,14 +872,15 @@
         var newName = form.querySelector('.edit_name').value.trim();
         var newPass = form.querySelector('.edit_pass').value;
         if(!newName){ showToast('اكتب اسم صحيح', 'err'); return; }
-        u.name = newName;
-        if(newPass){ u.password = newPass; }
-        state.users[email] = u;
-        var ok = await setShared('edu_users', state.users);
-        if(ok){
+        var res = await apiPost('updateUser', {email:email, name:newName, password:newPass || undefined});
+        if(res && res.ok){
+          u.name = newName;
+          state.users[email] = u;
           state.editingStudentEmail = null;
           showToast('اتحفظت التعديلات', 'ok');
           renderTeacherDash();
+        } else {
+          showToast('حصلت مشكلة في الحفظ، حاول تاني', 'err');
         }
       });
     });
@@ -886,12 +898,14 @@
             v.students = v.students.filter(function(em){ return em !== email; });
           }
         });
-        var ok1 = await setShared('edu_users', state.users);
-        var ok2 = await setShared('edu_slots', state.slots);
-        var ok3 = await setShared('edu_videos', state.videos);
-        if(ok1 && ok2 && ok3){
+        var res1 = await apiPost('deleteUser', {email: email});
+        var res2 = await apiPost('setSlots', {slots: state.slots});
+        var res3 = await apiPost('setVideos', {videos: state.videos});
+        if(res1 && res1.ok && res2 && res2.ok && res3 && res3.ok){
           showToast('اتحذف الحساب', 'ok');
           renderTeacherDash();
+        } else {
+          showToast('حصلت مشكلة في الحذف، حاول تاني', 'err');
         }
       });
     });
@@ -948,14 +962,20 @@
         var id = b.getAttribute('data-book');
         var slot = state.slots.find(function(s){ return s.id === id; });
         if(!slot || slot.studentEmail){ showToast('للأسف الميعاد ده اتحجز', 'err'); renderStudentDash(); return; }
-        slot.studentEmail = state.currentUser.email;
-        var ok1 = await setShared('edu_slots', state.slots);
-        if(!state.currentUser.hasEverBooked){
-          state.currentUser.hasEverBooked = true;
-          state.users[state.currentUser.email] = state.currentUser;
-          await setShared('edu_users', state.users);
+        // الحجز بيتم جوه السيرفر بقفل - لو طالبين ضغطوا "احجز" في نفس اللحظة
+        // بالظبط، واحد بس اللي هيعدي والتاني هياخد رسالة إن الميعاد اتحجز
+        var res = await apiPost('bookSlot', {slotId:id, studentEmail: state.currentUser.email});
+        if(!res || !res.ok){
+          showToast((res && res.error) ? res.error : 'للأسف الميعاد ده اتحجز', 'err');
+          await loadAll();
+          renderStudentDash();
+          return;
         }
-        if(ok1){ showToast('تم حجز الميعاد بنجاح ✅', 'ok'); renderStudentDash(); }
+        state.slots = res.slots || state.slots;
+        state.currentUser.hasEverBooked = true;
+        state.users[state.currentUser.email] = state.currentUser;
+        showToast('تم حجز الميعاد بنجاح ✅', 'ok');
+        renderStudentDash();
       });
     });
   }
@@ -991,10 +1011,13 @@
       b.addEventListener('click', async function(){
         var id = b.getAttribute('data-cancel');
         if(!confirm('متأكد إنك عايز تلغي الحجز ده؟')) return;
-        var slot = state.slots.find(function(s){ return s.id === id; });
-        if(slot) slot.studentEmail = null;
-        var ok = await setShared('edu_slots', state.slots);
-        if(ok){ showToast('اتلغى الحجز', 'ok'); renderStudentDash(); }
+        var res = await apiPost('cancelSlot', {slotId:id});
+        if(res && res.ok){
+          state.slots = res.slots || state.slots;
+          showToast('اتلغى الحجز', 'ok'); renderStudentDash();
+        } else {
+          showToast('حصلت مشكلة، حاول تاني', 'err');
+        }
       });
     });
   }
