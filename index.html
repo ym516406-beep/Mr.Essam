@@ -337,11 +337,19 @@
       return fallback;
     }
   }
-  async function setShared(key, value){
+  async function setShared(key, value, attempt){
+    attempt = attempt || 1;
     try{
-      await window.storage.set(key, JSON.stringify(value), true);
+      var res = await window.storage.set(key, JSON.stringify(value), true);
+      if(!res){ throw new Error('empty response'); }
       return true;
     }catch(e){
+      if(attempt < 4){
+        // retry a few times with a short delay before giving up - handles transient
+        // network hiccups / write conflicts instead of failing on the first try
+        await new Promise(function(r){ setTimeout(r, 400 * attempt); });
+        return setShared(key, value, attempt + 1);
+      }
       showToast('حصلت مشكلة في الحفظ، حاول تاني', 'err');
       return false;
     }
@@ -493,7 +501,11 @@
 
     document.getElementById('authForm').addEventListener('submit', function(e){
       e.preventDefault();
-      if(isLogin){ handleLogin(); } else { handleSignup(); }
+      var btn = e.target.querySelector('button[type="submit"]');
+      if(btn){ btn.disabled = true; btn.textContent = 'جاري الحفظ...'; }
+      var done = function(){ if(btn){ btn.disabled = false; btn.textContent = isLogin ? 'دخول' : 'إنشاء الحساب'; } };
+      var p = isLogin ? handleLogin() : handleSignup();
+      Promise.resolve(p).then(done, done);
     });
   }
 
@@ -511,13 +523,27 @@
     if(!grade){
       state.error = 'من فضلك اختار الصف الدراسي'; renderAuth(); return;
     }
+    // re-fetch the latest saved users first, in case another student registered
+    // in the meantime - otherwise saving here could overwrite their account
+    var freshUsers = await getShared('edu_users', {});
+    state.users = freshUsers || {};
+
     if(email === TEACHER_USERNAME.toLowerCase() || state.users[email]){
       state.error = 'في حساب موجود بالفعل بالإيميل ده'; renderAuth(); return;
     }
     var newUser = {name:name, email:email, phone:phone, password:pass, role:'student', hasEverBooked:false, grade:grade};
     state.users[email] = newUser;
     var ok = await setShared('edu_users', state.users);
-    if(!ok) return;
+    if(!ok){ renderAuth(); return; }
+
+    // double-check the account actually made it to storage before letting the
+    // student in - avoids the account "working" only until the page is closed
+    var verifyUsers = await getShared('edu_users', {});
+    if(!verifyUsers || !verifyUsers[email]){
+      state.error = 'حصلت مشكلة في حفظ الحساب، حاول تاني'; renderAuth(); return;
+    }
+    state.users = verifyUsers;
+
     state.currentUser = newUser;
     state.error = '';
     state.dashTab = null;
