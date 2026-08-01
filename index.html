@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>منصة الدروس</title>
+<title>منصة تعليميه </title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@700;800;900&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -302,12 +302,12 @@
 
   var GRADES = ['G4','G5','G6','G7','G8','G9'];
   var GRADE_LABELS = {
-    G4:'الصف الرابع الابتدائي',
-    G5:'الصف الخامس الابتدائي',
-    G6:'الصف السادس الابتدائي',
-    G7:'الصف الأول الإعدادي',
-    G8:'الصف الثاني الإعدادي',
-    G9:'الصف الثالث الإعدادي'
+    G4:'الصف الرابع الابتدائي g4',
+    G5:'الصف الخامس الابتدائي g5',
+    G6:'الصف السادس الابتدائي g6',
+    G7:'الصف الأول الإعدادي g7',
+    G8:'الصف الثاني الإعدادي g8',
+    G9:'الصف الثالث الإعدادي g9'
   };
 
   var state = {
@@ -319,6 +319,7 @@
     authMode:'login',   // 'login' | 'signup'
     authRole:'student',
     dashTab:null,
+    editingStudentEmail:null,
     error:''
   };
 
@@ -457,12 +458,15 @@
 
     html += '<form id="authForm">';
     if(!isLogin){
+      html += '<div class="field"><label>البريد الإلكتروني</label><input type="text" id="f_email" placeholder="example@email.com" required></div>';
+      html += '<div class="field"><label>رقم الموبايل</label><input type="tel" id="f_phone" placeholder="01xxxxxxxxx" required></div>';
+      html += '<div class="muted" style="margin:-4px 0 14px;">دلوقتي اعمل باسورد لمنصتك واسم ليك:</div>';
+      html += '<div class="field"><label>كلمة المرور</label><input type="password" id="f_pass" placeholder="••••••••" minlength="4" required></div>';
       html += '<div class="field"><label>الاسم</label><input type="text" id="f_name" placeholder="اكتب اسمك" required></div>';
-    }
-    html += '<div class="field"><label>' + (isLogin ? 'البريد الإلكتروني' : 'البريد الإلكتروني') + '</label><input type="text" id="f_email" placeholder="' + (isLogin ? 'البريد الإلكتروني الخاص بيك' : 'example@email.com') + '" required></div>';
-    html += '<div class="field"><label>كلمة المرور</label><input type="password" id="f_pass" placeholder="••••••••" minlength="4" required></div>';
-    if(!isLogin){
       html += '<div class="field"><label>الصف الدراسي</label><select id="f_grade" required><option value="">اختار صفك الدراسي</option>' + gradeOptionsHtml(null) + '</select></div>';
+    } else {
+      html += '<div class="field"><label>البريد الإلكتروني</label><input type="text" id="f_email" placeholder="البريد الإلكتروني الخاص بيك" required></div>';
+      html += '<div class="field"><label>كلمة المرور</label><input type="password" id="f_pass" placeholder="••••••••" minlength="4" required></div>';
     }
     html += '<button type="submit" class="btn btn-block">' + (isLogin ? 'دخول' : 'إنشاء الحساب') + '</button>';
     html += '</form>';
@@ -496,11 +500,12 @@
   async function handleSignup(){
     var name = document.getElementById('f_name').value.trim();
     var email = document.getElementById('f_email').value.trim().toLowerCase();
+    var phone = document.getElementById('f_phone').value.trim();
     var pass = document.getElementById('f_pass').value;
     var gradeEl = document.getElementById('f_grade');
     var grade = gradeEl ? gradeEl.value : '';
 
-    if(!name || !email || !pass){
+    if(!name || !email || !phone || !pass){
       state.error = 'من فضلك املأ كل الحقول'; renderAuth(); return;
     }
     if(!grade){
@@ -509,7 +514,7 @@
     if(email === TEACHER_USERNAME.toLowerCase() || state.users[email]){
       state.error = 'في حساب موجود بالفعل بالإيميل ده'; renderAuth(); return;
     }
-    var newUser = {name:name, email:email, password:pass, role:'student', hasEverBooked:false, grade:grade};
+    var newUser = {name:name, email:email, phone:phone, password:pass, role:'student', hasEverBooked:false, grade:grade};
     state.users[email] = newUser;
     var ok = await setShared('edu_users', state.users);
     if(!ok) return;
@@ -591,6 +596,7 @@
 
     if(state.dashTab === 'slots') bindTeacherSlots();
     if(state.dashTab === 'videos') bindTeacherVideos();
+    if(state.dashTab === 'students') bindTeacherStudents();
   }
 
   function tabBtn(key,label){
@@ -779,14 +785,90 @@
     } else {
       students.forEach(function(s){
         var count = state.slots.filter(function(sl){ return sl.studentEmail === s.email; }).length;
-        html += '<div class="list-item-row">';
-        html += '<div><strong>' + esc(s.name) + '</strong><div class="muted">' + esc(s.email) + (s.grade ? ' · ' + GRADE_LABELS[s.grade] : '') + '</div></div>';
-        html += '<div class="status-pill status-open">' + count + ' حجز</div>';
-        html += '</div>';
+        if(state.editingStudentEmail === s.email){
+          html += '<div class="list-item-row" style="display:block;">';
+          html += '<form class="editStudentForm" data-email="' + esc(s.email) + '">';
+          html += '<div class="row2">';
+          html += '<div class="field"><label>الاسم</label><input type="text" class="edit_name" value="' + esc(s.name) + '" required></div>';
+          html += '<div class="field"><label>باسورد جديد (سيبه فاضي لو مش هتغيره)</label><input type="password" class="edit_pass" placeholder="••••••••"></div>';
+          html += '</div>';
+          html += '<div class="muted" style="margin-bottom:10px;">' + esc(s.email) + (s.phone ? ' · ' + esc(s.phone) : '') + (s.grade ? ' · ' + GRADE_LABELS[s.grade] : '') + '</div>';
+          html += '<button type="submit" class="btn btn-accent btn-sm">حفظ</button> ';
+          html += '<button type="button" class="btn btn-sm cancelEditBtn" data-email="' + esc(s.email) + '">إلغاء</button>';
+          html += '</form></div>';
+        } else {
+          html += '<div class="list-item-row">';
+          html += '<div><strong>' + esc(s.name) + '</strong><div class="muted">' + esc(s.email) + (s.phone ? ' · ' + esc(s.phone) : '') + (s.grade ? ' · ' + GRADE_LABELS[s.grade] : '') + '</div></div>';
+          html += '<div style="display:flex; align-items:center; gap:8px;">';
+          html += '<div class="status-pill status-open">' + count + ' حجز</div>';
+          html += '<button class="btn btn-sm editStudentBtn" data-email="' + esc(s.email) + '">تعديل</button>';
+          html += '<button class="btn btn-sm btn-danger delStudentBtn" data-email="' + esc(s.email) + '">حذف</button>';
+          html += '</div></div>';
+        }
       });
     }
     html += '</div>';
     return html;
+  }
+
+  function bindTeacherStudents(){
+    app.querySelectorAll('.editStudentBtn').forEach(function(b){
+      b.addEventListener('click', function(){
+        state.editingStudentEmail = b.getAttribute('data-email');
+        document.getElementById('tabContent').innerHTML = teacherStudentsHtml();
+        bindTeacherStudents();
+      });
+    });
+    app.querySelectorAll('.cancelEditBtn').forEach(function(b){
+      b.addEventListener('click', function(){
+        state.editingStudentEmail = null;
+        document.getElementById('tabContent').innerHTML = teacherStudentsHtml();
+        bindTeacherStudents();
+      });
+    });
+    app.querySelectorAll('.editStudentForm').forEach(function(form){
+      form.addEventListener('submit', async function(e){
+        e.preventDefault();
+        var email = form.getAttribute('data-email');
+        var u = state.users[email];
+        if(!u){ state.editingStudentEmail = null; renderTeacherDash(); return; }
+        var newName = form.querySelector('.edit_name').value.trim();
+        var newPass = form.querySelector('.edit_pass').value;
+        if(!newName){ showToast('اكتب اسم صحيح', 'err'); return; }
+        u.name = newName;
+        if(newPass){ u.password = newPass; }
+        state.users[email] = u;
+        var ok = await setShared('edu_users', state.users);
+        if(ok){
+          state.editingStudentEmail = null;
+          showToast('اتحفظت التعديلات', 'ok');
+          renderTeacherDash();
+        }
+      });
+    });
+    app.querySelectorAll('.delStudentBtn').forEach(function(b){
+      b.addEventListener('click', async function(){
+        var email = b.getAttribute('data-email');
+        var u = state.users[email];
+        if(!confirm('متأكد إنك عايز تحذف حساب ' + (u ? u.name : email) + '؟ هيتلغي كل حجوزاته وهيتشال من الفيديوهات المحددة له.')) return;
+        delete state.users[email];
+        state.slots.forEach(function(sl){
+          if(sl.studentEmail === email) sl.studentEmail = null;
+        });
+        state.videos.forEach(function(v){
+          if(v.students){
+            v.students = v.students.filter(function(em){ return em !== email; });
+          }
+        });
+        var ok1 = await setShared('edu_users', state.users);
+        var ok2 = await setShared('edu_slots', state.slots);
+        var ok3 = await setShared('edu_videos', state.videos);
+        if(ok1 && ok2 && ok3){
+          showToast('اتحذف الحساب', 'ok');
+          renderTeacherDash();
+        }
+      });
+    });
   }
 
   // ================= STUDENT DASHBOARD =================
