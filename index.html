@@ -315,6 +315,11 @@
     users:{},
     videos:[],
     slots:[],
+    exams:[],            // للمدرّس: الامتحانات كاملة (مع الإجابات الصح)
+    examAttempts:[],      // للمدرّس: نتايج الطلاب
+    studentExams:[],      // للطالب: الامتحانات المتاحة ليه (من غير الإجابات الصح)
+    activeExam:null,      // الامتحان اللي الطالب بيمتحن فيه دلوقتي
+    examTimerInterval:null,
     currentUser:null,   // {name,email,password,role,grade}
     authMode:'login',   // 'login' | 'signup'
     authRole:'student',
@@ -582,6 +587,8 @@
   }
 
   function handleLogout(){
+    if(state.examTimerInterval){ clearInterval(state.examTimerInterval); state.examTimerInterval = null; }
+    state.activeExam = null;
     state.currentUser = null;
     state.authMode = 'login';
     state.error = '';
@@ -614,6 +621,7 @@
     html += '<div class="tabs">';
     html += tabBtn('slots','📅 المواعيد');
     html += tabBtn('videos','🎬 الفيديوهات');
+    html += tabBtn('exams','📝 الامتحانات');
     html += tabBtn('students','👥 الطلاب');
     html += '</div>';
     html += '<div id="tabContent"></div>';
@@ -625,11 +633,36 @@
     var holder = document.getElementById('tabContent');
     if(state.dashTab === 'slots') holder.innerHTML = teacherSlotsHtml();
     else if(state.dashTab === 'videos') holder.innerHTML = teacherVideosHtml();
+    else if(state.dashTab === 'exams') holder.innerHTML = teacherExamsHtml();
     else holder.innerHTML = teacherStudentsHtml();
 
     if(state.dashTab === 'slots') bindTeacherSlots();
     if(state.dashTab === 'videos') bindTeacherVideos();
+    if(state.dashTab === 'exams') bindTeacherExams();
     if(state.dashTab === 'students') bindTeacherStudents();
+  }
+
+  async function loadExamsForStudent(){
+    var res = await apiGet('examsForStudent', {email: state.currentUser.email});
+    if(res && res.ok){ state.studentExams = res.exams || []; }
+    else { showToast('حصلت مشكلة في تحميل الامتحانات', 'err'); }
+  }
+
+  async function loadExamsForTeacher(){
+    var res = await apiGet('examsForTeacher', {});
+    if(res && res.ok){
+      state.exams = res.exams || [];
+      state.examAttempts = res.attempts || [];
+    } else {
+      showToast('حصلت مشكلة في تحميل الامتحانات', 'err');
+    }
+  }
+
+  function fmtDeadline(iso){
+    try{
+      var d = new Date(iso);
+      return d.toLocaleString('ar-EG', {year:'numeric', month:'long', day:'numeric', hour:'2-digit', minute:'2-digit'});
+    }catch(e){ return iso; }
   }
 
   function tabBtn(key,label){
@@ -637,8 +670,12 @@
   }
   function bindTabs(rerenderFn){
     app.querySelectorAll('.tab-btn').forEach(function(b){
-      b.addEventListener('click', function(){
+      b.addEventListener('click', async function(){
         state.dashTab = b.getAttribute('data-tab');
+        if(state.dashTab === 'exams'){
+          if(state.currentUser.role === 'teacher') await loadExamsForTeacher();
+          else await loadExamsForStudent();
+        }
         rerenderFn();
       });
     });
@@ -911,6 +948,223 @@
     });
   }
 
+  // ================= TEACHER EXAMS =================
+  var examQCounter = 0;
+
+  function questionBlockHtml(qIndex){
+    var name = 'examCorrect_' + qIndex;
+    var html = '<div class="card examQuestionBlock" style="margin-bottom:12px; background:var(--surface-alt);">';
+    html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">';
+    html += '<strong>سؤال <span class="qNumLabel"></span></strong>';
+    html += '<button type="button" class="btn btn-sm btn-danger removeQBtn">حذف السؤال</button>';
+    html += '</div>';
+    html += '<div class="field"><label>نص السؤال</label><input type="text" class="qText" placeholder="اكتب السؤال هنا" required></div>';
+    html += '<div class="muted" style="margin-bottom:6px;">اكتب الاختيارات وحدد الإجابة الصح بالدائرة اللي جنبها (لازم اختيارين على الأقل):</div>';
+    for(var i=0;i<4;i++){
+      html += '<div class="field" style="display:flex; align-items:center; gap:10px; margin-bottom:8px;">';
+      html += '<input type="radio" name="'+name+'" value="'+i+'" class="qCorrect" style="width:auto;" title="ده الإجابة الصح">';
+      html += '<input type="text" class="qOption" placeholder="اختيار ' + (i+1) + (i<2?' (إجباري)':' (اختياري)') + '" style="flex:1;">';
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function renumberQuestionBlocks(){
+    app.querySelectorAll('#questionsContainer .examQuestionBlock').forEach(function(b, idx){
+      var label = b.querySelector('.qNumLabel');
+      if(label) label.textContent = (idx+1);
+    });
+  }
+
+  function addQuestionBlock(){
+    var container = document.getElementById('questionsContainer');
+    if(!container) return;
+    var wrap = document.createElement('div');
+    wrap.innerHTML = questionBlockHtml(examQCounter++);
+    var block = wrap.firstChild;
+    container.appendChild(block);
+    block.querySelector('.removeQBtn').addEventListener('click', function(){
+      block.remove();
+      renumberQuestionBlocks();
+    });
+    renumberQuestionBlocks();
+  }
+
+  function teacherExamsHtml(){
+    var students = Object.values(state.users).filter(function(u){ return u.role === 'student'; });
+
+    var html = '<div class="card">';
+    html += '<div class="section-title">إضافة امتحان جديد</div>';
+    html += '<form id="examForm">';
+    html += '<div class="field"><label>عنوان الامتحان</label><input type="text" id="e_title" placeholder="مثال: امتحان الوحدة الأولى" required></div>';
+    html += '<div class="field"><label>وصف مختصر (اختياري)</label><textarea id="e_desc" rows="2"></textarea></div>';
+    html += '<div class="row2">';
+    html += '<div class="field"><label>مدة الامتحان (بالدقايق)</label><input type="number" id="e_duration" min="1" value="30" required></div>';
+    html += '<div class="field"><label>آخر ميعاد لدخول الامتحان (اختياري)</label><input type="datetime-local" id="e_deadline"></div>';
+    html += '</div>';
+
+    html += '<div class="field"><label>يتاح للصفوف دي (اختياري)</label><div class="chip-group" id="examGradeChips">';
+    GRADES.forEach(function(g){
+      html += '<label class="chip-check"><input type="checkbox" value="' + g + '" class="examGradeChk"> ' + GRADE_LABELS[g] + '</label>';
+    });
+    html += '</div><div class="muted" style="margin-top:6px;">لو مختارتش صف، الامتحان يبقى متاح لكل الطلاب (إلا لو حددت طلاب معينين تحت).</div></div>';
+
+    html += '<div class="field"><label>أو حدد طلاب معينين (اختياري)</label>';
+    if(students.length === 0){
+      html += '<div class="muted">لسه مفيش طلاب مسجلين في الموقع.</div>';
+    } else {
+      html += '<div class="student-pick-list">';
+      students.forEach(function(s){
+        html += '<label class="student-pick-row"><input type="checkbox" value="' + esc(s.email) + '" class="examStudentChk">';
+        html += '<span>' + esc(s.name) + ' <span class="muted">(' + esc(s.email) + (s.grade ? ' — ' + GRADE_LABELS[s.grade] : '') + ')</span></span></label>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+
+    html += '<div class="section-title" style="font-size:16px; margin-top:22px;">الأسئلة</div>';
+    html += '<div id="questionsContainer"></div>';
+    html += '<button type="button" class="btn btn-sm" id="addQBtn" style="margin-bottom:16px;">+ إضافة سؤال</button>';
+
+    html += '<button type="submit" class="btn btn-accent btn-block">حفظ ونشر الامتحان</button>';
+    html += '</form></div>';
+
+    html += '<div class="card"><div class="section-title">الامتحانات (' + state.exams.length + ')</div>';
+    if(state.exams.length === 0){
+      html += emptyState('📝','لسه مفيش امتحانات مضافة');
+    } else {
+      state.exams.slice().reverse().forEach(function(ex){
+        var attempts = state.examAttempts.filter(function(a){ return a.examId === ex.id; });
+        var submittedCount = attempts.filter(function(a){ return a.submittedAt; }).length;
+        html += '<div class="list-item-row" style="display:block; padding:14px 0;">';
+        html += '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">';
+        html += '<div><strong>' + esc(ex.title) + '</strong><div class="muted">' + ex.questions.length + ' سؤال — ' + esc(ex.durationMinutes) + ' دقيقة — سلّم ' + submittedCount + ' من ' + attempts.length + '</div></div>';
+        html += '<div style="display:flex; gap:8px;">';
+        html += '<button type="button" class="btn btn-sm resultsBtn" data-exam="' + ex.id + '">النتائج</button>';
+        html += '<button type="button" class="btn btn-sm btn-danger delExamBtn" data-exam="' + ex.id + '">حذف</button>';
+        html += '</div></div>';
+        html += '<div class="examResultsBox" id="results_' + ex.id + '" style="display:none; margin-top:12px;"></div>';
+        html += '</div>';
+      });
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function bindTeacherExams(){
+    var container = document.getElementById('questionsContainer');
+    if(container && container.children.length === 0){
+      addQuestionBlock();
+      addQuestionBlock();
+    }
+    var addBtn = document.getElementById('addQBtn');
+    if(addBtn) addBtn.addEventListener('click', addQuestionBlock);
+
+    app.querySelectorAll('#examGradeChips .chip-check').forEach(function(chip){
+      var box = chip.querySelector('input');
+      box.addEventListener('change', function(){ chip.classList.toggle('checked', box.checked); });
+    });
+
+    var form = document.getElementById('examForm');
+    if(form) form.addEventListener('submit', async function(e){
+      e.preventDefault();
+      var title = document.getElementById('e_title').value.trim();
+      var desc = document.getElementById('e_desc').value.trim();
+      var duration = parseInt(document.getElementById('e_duration').value, 10);
+      var deadlineVal = document.getElementById('e_deadline').value;
+      var deadline = deadlineVal ? new Date(deadlineVal).toISOString() : null;
+
+      if(!title || !duration || duration < 1){ showToast('اكتب عنوان ومدة صحيحة', 'err'); return; }
+
+      var grades = Array.prototype.slice.call(app.querySelectorAll('.examGradeChk:checked')).map(function(el){ return el.value; });
+      var studentsSel = Array.prototype.slice.call(app.querySelectorAll('.examStudentChk:checked')).map(function(el){ return el.value; });
+
+      var questions = [];
+      var valid = true;
+      app.querySelectorAll('#questionsContainer .examQuestionBlock').forEach(function(b){
+        var text = b.querySelector('.qText').value.trim();
+        var correctRadio = b.querySelector('.qCorrect:checked');
+        var correctIdx = correctRadio ? parseInt(correctRadio.value, 10) : -1;
+        var options = Array.prototype.map.call(b.querySelectorAll('.qOption'), function(inp){ return inp.value.trim(); });
+        var filledOptions = [];
+        var newCorrectIdx = -1;
+        options.forEach(function(opt, idx){
+          if(opt){
+            if(idx === correctIdx) newCorrectIdx = filledOptions.length;
+            filledOptions.push(opt);
+          }
+        });
+        if(!text || filledOptions.length < 2 || newCorrectIdx === -1){ valid = false; return; }
+        questions.push({id: uid(), text: text, options: filledOptions, correctIndex: newCorrectIdx});
+      });
+
+      if(!valid || questions.length === 0){
+        showToast('كل سؤال لازم نص + اختيارين على الأقل + تحديد الإجابة الصح', 'err');
+        return;
+      }
+
+      var exam = {
+        id: uid(), title: title, description: desc, durationMinutes: duration,
+        deadline: deadline, grades: grades, students: studentsSel,
+        questions: questions, createdAt: Date.now()
+      };
+
+      var res = await apiPost('saveExam', {exam: exam});
+      if(res && res.ok){
+        state.exams.push(exam);
+        showToast('اتنشر الامتحان بنجاح', 'ok');
+        renderTeacherDash();
+      } else {
+        showToast((res && res.error) ? res.error : 'حصلت مشكلة في الحفظ، حاول تاني', 'err');
+      }
+    });
+
+    app.querySelectorAll('.delExamBtn').forEach(function(b){
+      b.addEventListener('click', async function(){
+        var id = b.getAttribute('data-exam');
+        if(!confirm('متأكد إنك عايز تحذف الامتحان ده؟ هيتحذف معاه نتايج الطلاب اللي خدوه.')) return;
+        var res = await apiPost('deleteExam', {examId: id});
+        if(res && res.ok){
+          state.exams = state.exams.filter(function(x){ return x.id !== id; });
+          state.examAttempts = state.examAttempts.filter(function(a){ return a.examId !== id; });
+          showToast('اتحذف الامتحان', 'ok');
+          renderTeacherDash();
+        } else {
+          showToast('حصلت مشكلة في الحذف، حاول تاني', 'err');
+        }
+      });
+    });
+
+    app.querySelectorAll('.resultsBtn').forEach(function(b){
+      b.addEventListener('click', function(){
+        var id = b.getAttribute('data-exam');
+        var box = document.getElementById('results_' + id);
+        if(!box) return;
+        if(box.style.display === 'block'){ box.style.display = 'none'; return; }
+        var attempts = state.examAttempts.filter(function(a){ return a.examId === id; });
+        var html = '';
+        if(attempts.length === 0){
+          html = '<div class="muted">لسه محدش دخل الامتحان ده</div>';
+        } else {
+          attempts.forEach(function(a){
+            var u = state.users[a.studentEmail];
+            html += '<div class="list-item-row">';
+            html += '<div>' + esc(u ? u.name : a.studentEmail) + '<div class="muted">' + esc(a.studentEmail) + '</div></div>';
+            if(a.submittedAt){
+              html += '<span class="status-pill status-open">' + esc(a.score) + ' / ' + esc(a.total) + '</span>';
+            } else {
+              html += '<span class="status-pill status-booked">لسه بيمتحن</span>';
+            }
+            html += '</div>';
+          });
+        }
+        box.innerHTML = html;
+        box.style.display = 'block';
+      });
+    });
+  }
+
   // ================= STUDENT DASHBOARD =================
   function renderStudentDash(){
     if(!state.dashTab) state.dashTab = 'book';
@@ -920,6 +1174,7 @@
     html += tabBtn('book','📅 حجز ميعاد');
     html += tabBtn('mine','🗓️ مواعيدي');
     html += tabBtn('videos','🎬 الفيديوهات');
+    html += tabBtn('exams','📝 الامتحانات');
     html += '</div>';
     html += '<div id="tabContent"></div>';
     html += '</div></div>';
@@ -930,10 +1185,12 @@
     var holder = document.getElementById('tabContent');
     if(state.dashTab === 'book') holder.innerHTML = studentBookHtml();
     else if(state.dashTab === 'mine') holder.innerHTML = studentMineHtml();
+    else if(state.dashTab === 'exams') holder.innerHTML = studentExamsHtml();
     else holder.innerHTML = studentVideosHtml();
 
     if(state.dashTab === 'book') bindStudentBook();
     if(state.dashTab === 'mine') bindStudentMine();
+    if(state.dashTab === 'exams') bindStudentExams();
   }
 
   function studentBookHtml(){
@@ -1068,6 +1325,180 @@
 
   function emptyState(icon, text){
     return '<div class="empty-state"><div class="icon">' + icon + '</div><div>' + esc(text) + '</div></div>';
+  }
+
+  // ================= STUDENT EXAMS =================
+  function studentExamsHtml(){
+    var html = '<div class="card"><div class="section-title">الامتحانات (' + state.studentExams.length + ')</div>';
+    if(state.studentExams.length === 0){
+      html += emptyState('📝','لسه مفيش امتحانات متاحة ليك دلوقتي');
+    } else {
+      state.studentExams.forEach(function(ex){
+        html += '<div class="ticket">';
+        html += '<div class="ticket-main">';
+        html += '<div class="ticket-date">' + esc(ex.title) + '</div>';
+        html += '<div class="ticket-time">📝 ' + ex.questions.length + ' سؤال — مدة ' + esc(ex.durationMinutes) + ' دقيقة</div>';
+        if(ex.description) html += '<div class="muted" style="margin-top:6px;">' + esc(ex.description) + '</div>';
+        if(ex.deadline && ex.attemptStatus === 'not_started') html += '<div class="muted" style="margin-top:4px;">آخر ميعاد للدخول: ' + fmtDeadline(ex.deadline) + '</div>';
+        html += '</div>';
+        html += '<div class="ticket-stub">';
+        if(ex.attemptStatus === 'submitted'){
+          html += '<div style="text-align:center;"><div class="status-pill status-open">درجتك: ' + esc(ex.score) + '/' + esc(ex.total) + '</div></div>';
+        } else if(ex.attemptStatus === 'in_progress'){
+          html += '<button class="btn btn-sm btn-accent" data-continue="' + ex.id + '">كمّل الامتحان</button>';
+        } else {
+          html += '<button class="btn btn-sm btn-accent" data-start="' + ex.id + '">ابدأ الامتحان</button>';
+        }
+        html += '</div></div>';
+      });
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function bindStudentExams(){
+    app.querySelectorAll('[data-start]').forEach(function(b){
+      b.addEventListener('click', function(){ startExamFlow(b.getAttribute('data-start')); });
+    });
+    app.querySelectorAll('[data-continue]').forEach(function(b){
+      b.addEventListener('click', function(){ startExamFlow(b.getAttribute('data-continue')); });
+    });
+  }
+
+  async function startExamFlow(examId){
+    var exam = state.studentExams.find(function(e){ return e.id === examId; });
+    if(!exam) return;
+    var res = await apiPost('startExam', {examId: examId, studentEmail: state.currentUser.email});
+    if(!res || !res.ok){
+      showToast((res && res.error) ? res.error : 'حصلت مشكلة، حاول تاني', 'err');
+      return;
+    }
+    if(res.status === 'submitted'){
+      exam.attemptStatus = 'submitted'; exam.score = res.score; exam.total = res.total;
+      renderStudentDash();
+      return;
+    }
+    state.activeExam = {
+      examId: examId,
+      title: exam.title,
+      questions: exam.questions,
+      durationMinutes: res.durationMinutes || exam.durationMinutes,
+      startedAt: res.startedAt,
+      answers: res.savedAnswers || []
+    };
+    renderExamTaking();
+  }
+
+  function renderExamTaking(){
+    var ex = state.activeExam;
+    var html = topbarHtml();
+    html += '<div class="main-wrap"><div class="content">';
+    html += '<div class="card" style="text-align:center; margin-bottom:16px;">';
+    html += '<div style="font-family:\'Tajawal\'; font-weight:800; font-size:17px; color:var(--primary); margin-bottom:6px;">' + esc(ex.title) + '</div>';
+    html += '<div id="examTimer" style="font-family:\'Tajawal\'; font-weight:900; font-size:30px;">--:--</div>';
+    html += '<div class="muted" style="margin-top:4px;">هيتسلّم الامتحان تلقائيًا لما الوقت يخلص</div>';
+    html += '</div>';
+
+    ex.questions.forEach(function(q, qi){
+      html += '<div class="card" style="margin-bottom:14px;">';
+      html += '<div style="font-weight:800; margin-bottom:12px;">' + (qi+1) + '. ' + esc(q.text) + '</div>';
+      (q.options || []).forEach(function(opt, oi){
+        var checked = ex.answers[qi] === oi ? 'checked' : '';
+        html += '<label class="student-pick-row" style="cursor:pointer;">';
+        html += '<input type="radio" name="examq_' + qi + '" value="' + oi + '" ' + checked + ' class="examAnswer" data-qi="' + qi + '">';
+        html += '<span>' + esc(opt) + '</span></label>';
+      });
+      html += '</div>';
+    });
+
+    html += '<button class="btn btn-accent btn-block" id="submitExamBtn">تسليم الامتحان</button>';
+    html += '</div></div>';
+    app.innerHTML = html;
+    bindLogout();
+    bindExamTaking();
+    startExamTimer();
+  }
+
+  function bindExamTaking(){
+    var progressTimeout = null;
+    app.querySelectorAll('.examAnswer').forEach(function(inp){
+      inp.addEventListener('change', function(){
+        var qi = parseInt(inp.getAttribute('data-qi'), 10);
+        state.activeExam.answers[qi] = parseInt(inp.value, 10);
+        clearTimeout(progressTimeout);
+        progressTimeout = setTimeout(function(){
+          apiPost('saveProgress', {examId: state.activeExam.examId, studentEmail: state.currentUser.email, answers: state.activeExam.answers});
+        }, 700);
+      });
+    });
+    var submitBtn = document.getElementById('submitExamBtn');
+    if(submitBtn) submitBtn.addEventListener('click', function(){
+      if(!confirm('متأكد إنك عايز تسلّم الامتحان؟ مش هتقدر تعدّل بعد كده.')) return;
+      finishExam();
+    });
+  }
+
+  function startExamTimer(){
+    if(state.examTimerInterval) clearInterval(state.examTimerInterval);
+    state.examTimerInterval = setInterval(updateExamTimer, 1000);
+    updateExamTimer();
+  }
+
+  function updateExamTimer(){
+    if(!state.currentUser || !state.activeExam){
+      clearInterval(state.examTimerInterval);
+      return;
+    }
+    var ex = state.activeExam;
+    var started = new Date(ex.startedAt).getTime();
+    var durationMs = (ex.durationMinutes || 0) * 60000;
+    var remaining = Math.max(0, started + durationMs - Date.now());
+    var el = document.getElementById('examTimer');
+    if(el){
+      var mins = Math.floor(remaining / 60000);
+      var secs = Math.floor((remaining % 60000) / 1000);
+      el.textContent = (mins < 10 ? '0' : '') + mins + ':' + (secs < 10 ? '0' : '') + secs;
+      el.style.color = remaining <= 60000 ? 'var(--danger)' : 'var(--primary)';
+    }
+    if(remaining <= 0){
+      clearInterval(state.examTimerInterval);
+      showToast('خلص وقت الامتحان، هيتسلّم تلقائيًا', 'err');
+      finishExam();
+    }
+  }
+
+  async function finishExam(){
+    var ex = state.activeExam;
+    if(!ex) return;
+    var res = await apiPost('submitExam', {examId: ex.examId, studentEmail: state.currentUser.email, answers: ex.answers});
+    if(res && res.ok){
+      var studentEx = state.studentExams.find(function(e){ return e.id === ex.examId; });
+      if(studentEx){ studentEx.attemptStatus = 'submitted'; studentEx.score = res.score; studentEx.total = res.total; }
+      renderExamResult(res.score, res.total, ex.title);
+    } else {
+      showToast((res && res.error) ? res.error : 'حصلت مشكلة في التسليم، حاول تاني', 'err');
+    }
+  }
+
+  function renderExamResult(score, total, title){
+    if(state.examTimerInterval) clearInterval(state.examTimerInterval);
+    state.activeExam = null;
+    var html = topbarHtml();
+    html += '<div class="main-wrap"><div class="content">';
+    html += '<div class="card" style="text-align:center; padding:50px 24px;">';
+    html += '<div style="font-size:48px; margin-bottom:14px;">🎉</div>';
+    html += '<div class="section-title">اتسلّم امتحان "' + esc(title) + '"</div>';
+    html += '<div style="font-family:\'Tajawal\'; font-weight:900; font-size:32px; color:var(--primary); margin:14px 0;">' + esc(score) + ' / ' + esc(total) + '</div>';
+    html += '<button class="btn btn-accent" id="backToExamsBtn">رجوع للامتحانات</button>';
+    html += '</div></div></div>';
+    app.innerHTML = html;
+    bindLogout();
+    var b = document.getElementById('backToExamsBtn');
+    if(b) b.addEventListener('click', async function(){
+      state.dashTab = 'exams';
+      await loadExamsForStudent();
+      renderStudentDash();
+    });
   }
 
   // ---------------- init ----------------
