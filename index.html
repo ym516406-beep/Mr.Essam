@@ -1142,6 +1142,7 @@
         var box = document.getElementById('results_' + id);
         if(!box) return;
         if(box.style.display === 'block'){ box.style.display = 'none'; return; }
+        var exam = state.exams.find(function(x){ return x.id === id; });
         var attempts = state.examAttempts.filter(function(a){ return a.examId === id; });
         var html = '';
         if(attempts.length === 0){
@@ -1149,16 +1150,58 @@
         } else {
           attempts.forEach(function(a){
             var u = state.users[a.studentEmail];
-            html += '<div class="list-item-row">';
+            html += '<div class="list-item-row" style="display:block;">';
+            html += '<div style="display:flex; justify-content:space-between; align-items:center;">';
             html += '<div>' + esc(u ? u.name : a.studentEmail) + '<div class="muted">' + esc(a.studentEmail) + '</div></div>';
             if(a.submittedAt){
+              html += '<div style="display:flex; align-items:center; gap:8px;">';
               html += '<span class="status-pill status-open">' + esc(a.score) + ' / ' + esc(a.total) + '</span>';
+              html += '<button type="button" class="btn btn-sm answerDetailsBtn" data-exam="' + id + '" data-student="' + esc(a.studentEmail) + '">إجاباته</button>';
+              html += '</div>';
             } else {
               html += '<span class="status-pill status-booked">لسه بيمتحن</span>';
             }
             html += '</div>';
+            html += '<div class="answerDetailsBox" id="ans_' + id + '_' + a.studentEmail.replace(/[^a-z0-9]/gi,'_') + '" style="display:none; margin-top:10px;"></div>';
+            html += '</div>';
           });
         }
+        box.innerHTML = html;
+        box.style.display = 'block';
+        bindAnswerDetails(exam, attempts);
+      });
+    });
+  }
+
+  function bindAnswerDetails(exam, attempts){
+    app.querySelectorAll('.answerDetailsBtn').forEach(function(b){
+      b.addEventListener('click', function(){
+        var studentEmail = b.getAttribute('data-student');
+        var boxId = 'ans_' + b.getAttribute('data-exam') + '_' + studentEmail.replace(/[^a-z0-9]/gi,'_');
+        var box = document.getElementById(boxId);
+        if(!box) return;
+        if(box.style.display === 'block'){ box.style.display = 'none'; return; }
+        var attempt = attempts.find(function(a){ return a.studentEmail === studentEmail; });
+        if(!exam || !attempt){ return; }
+        var html = '';
+        exam.questions.forEach(function(q, qi){
+          var selected = attempt.answers ? attempt.answers[qi] : undefined;
+          var correct = selected !== undefined && selected !== null && Number(selected) === Number(q.correctIndex);
+          html += '<div style="padding:10px 0; border-bottom:1px solid var(--border);">';
+          html += '<div style="font-weight:700; margin-bottom:6px;">' + (qi+1) + '. ' + esc(q.text) + '</div>';
+          q.options.forEach(function(opt, oi){
+            var tag = '';
+            if(oi === q.correctIndex) tag = ' ✅ (الإجابة الصح)';
+            if(oi === selected && !correct) tag = ' ❌ (اختيار الطالب)';
+            else if(oi === selected && correct) tag = ' ✅ (اختيار الطالب - صح)';
+            var style = (oi === q.correctIndex) ? 'color:var(--success); font-weight:700;' : (oi === selected ? 'color:var(--danger); font-weight:700;' : 'color:var(--text-muted);');
+            html += '<div style="' + style + ' font-size:13px; margin-right:12px;">' + esc(opt) + tag + '</div>';
+          });
+          if(selected === undefined || selected === null){
+            html += '<div class="muted" style="font-size:12px; margin-top:4px;">الطالب مجاوبش على السؤال ده</div>';
+          }
+          html += '</div>';
+        });
         box.innerHTML = html;
         box.style.display = 'block';
       });
