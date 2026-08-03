@@ -403,11 +403,25 @@
   }
   function uid(){ return 'id_' + Date.now() + '_' + Math.random().toString(36).slice(2,8); }
 
-  function ytEmbed(url){
+  function videoEmbed(url){
     if(!url) return '';
     url = url.trim();
-    // بارامترات بتقلل شعار يوتيوب وأي اقتراحات فيديوهات تانية في الآخر،
-    // عشان الفيديو يبان جزء من المنصة قد الإمكان (مينفعش يتشال خالص، ده من شروط يوتيوب)
+
+    // جوجل درايف: بيتعرف تلقائي من الرابط ويتحول لصيغة العرض المباشر
+    if(url.indexOf('drive.google.com') !== -1 || url.indexOf('docs.google.com') !== -1){
+      var driveId = '';
+      var m1 = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+      if(m1) driveId = m1[1];
+      if(!driveId){
+        var m2 = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+        if(m2) driveId = m2[1];
+      }
+      if(driveId) return 'https://drive.google.com/file/d/' + driveId + '/preview';
+      return url;
+    }
+
+    // يوتيوب - بارامترات بتقلل شعار يوتيوب وأي اقتراحات فيديوهات تانية في
+    // الآخر، عشان الفيديو يبان جزء من المنصة قد الإمكان
     var params = 'modestbranding=1&rel=0&iv_load_policy=3&playsinline=1&color=white&fs=1';
     try{
       var id = '';
@@ -420,7 +434,6 @@
       } else if(url.indexOf('/shorts/') !== -1){
         id = url.split('/shorts/')[1].split(/[?&]/)[0];
       }
-      // youtube-nocookie.com نسخة أخف من ناحية التتبع وبراندينج يوتيوب
       if(id) return 'https://www.youtube-nocookie.com/embed/' + id + '?' + params;
       return url;
     }catch(e){ return url; }
@@ -755,10 +768,10 @@
 
     var html = '<div class="card">';
     html += '<div class="section-title">إضافة فيديو جديد</div>';
-    html += '<div class="muted" style="margin-bottom:14px;">ارفع الفيديو على يوتيوب كـ "غير مدرج / Unlisted" وحط رابطه هنا. الطريقة دي بتخلي الفيديو يتشغل بسلاسة تامة مهما كان طويل، من غير ما الموقع يعلق.</div>';
+    html += '<div class="muted" style="margin-bottom:14px;">ارفع الفيديو على Google Drive وخليه "Anyone with the link" (أي حد معاه الرابط)، وحط رابط المشاركة هنا. برضو ممكن تحط رابط يوتيوب Unlisted عادي وهيشتغل تلقائي.</div>';
     html += '<form id="videoForm">';
     html += '<div class="field"><label>عنوان الفيديو</label><input type="text" id="v_title" placeholder="مثال: شرح الدرس الأول" required></div>';
-    html += '<div class="field"><label>رابط يوتيوب (Unlisted)</label><input type="text" id="v_url" placeholder="https://youtu.be/xxxxxxx" required></div>';
+    html += '<div class="field"><label>رابط الفيديو (Google Drive أو يوتيوب)</label><input type="text" id="v_url" placeholder="https://drive.google.com/file/d/xxxxxxx/view?usp=sharing" required></div>';
     html += '<div class="field"><label>وصف مختصر (اختياري)</label><textarea id="v_desc" rows="2" placeholder="نبذة عن محتوى الفيديو"></textarea></div>';
 
     html += '<div class="field"><label>يتفتح للصفوف دي (اختياري)</label><div class="chip-group" id="gradeChips">';
@@ -790,7 +803,7 @@
       html += '<div class="video-grid">';
       state.videos.slice().reverse().forEach(function(v){
         html += '<div class="video-card">';
-        html += '<div class="video-frame-wrap"><iframe src="' + esc(ytEmbed(v.url)) + '" loading="lazy" allowfullscreen></iframe></div>';
+        html += '<div class="video-frame-wrap"><iframe src="' + esc(videoEmbed(v.url)) + '" loading="lazy" allowfullscreen></iframe></div>';
         html += '<div class="video-info">';
         html += '<div class="video-title">' + esc(v.title) + '</div>';
         if(v.desc) html += '<div class="video-desc">' + esc(v.desc) + '</div>';
@@ -1337,19 +1350,6 @@
   }
 
   function studentVideosHtml(){
-    if(!state.currentUser.hasEverBooked){
-      var html = '<div class="card"><div class="lock-box">';
-      html += '<div class="icon">🔒</div>';
-      html += '<div style="font-family:\'Tajawal\'; font-weight:800; font-size:17px; color:var(--primary); margin-bottom:8px;">الفيديوهات مقفولة</div>';
-      html += '<div class="muted">احجز ميعادك الأول عشان تفتح كل الفيديوهات</div>';
-      html += '<button class="btn btn-accent" id="goBookBtn" style="margin-top:16px;">احجز دلوقتي</button>';
-      html += '</div></div>';
-      setTimeout(function(){
-        var b = document.getElementById('goBookBtn');
-        if(b) b.addEventListener('click', function(){ state.dashTab='book'; renderStudentDash(); });
-      },0);
-      return html;
-    }
     var visible = state.videos.filter(videoVisibleToCurrentStudent);
     var html2 = '<div class="card"><div class="section-title">الفيديوهات (' + visible.length + ')</div>';
     if(visible.length === 0){
@@ -1358,7 +1358,7 @@
       html2 += '<div class="video-grid">';
       visible.slice().reverse().forEach(function(v){
         html2 += '<div class="video-card">';
-        html2 += '<div class="video-frame-wrap"><iframe src="' + esc(ytEmbed(v.url)) + '" loading="lazy" allowfullscreen></iframe></div>';
+        html2 += '<div class="video-frame-wrap"><iframe src="' + esc(videoEmbed(v.url)) + '" loading="lazy" allowfullscreen></iframe></div>';
         html2 += '<div class="video-info">';
         html2 += '<div class="video-title">' + esc(v.title) + '</div>';
         if(v.desc) html2 += '<div class="video-desc">' + esc(v.desc) + '</div>';
