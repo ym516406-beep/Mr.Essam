@@ -85,6 +85,17 @@
   .main-wrap{flex:1; display:flex; width:100%; max-width:1200px; margin:0 auto;}
   .content{flex:1; padding:28px 24px 60px;}
 
+  html, body{ -webkit-tap-highlight-color: transparent; overscroll-behavior-y: contain; }
+  * { touch-action: manipulation; }
+  body{ -webkit-overflow-scrolling: touch; }
+
+  .spinner{
+    width:34px; height:34px; margin:0 auto;
+    border:4px solid var(--border); border-top-color:var(--primary);
+    border-radius:50%; animation:spin .8s linear infinite;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
   .tabs{
     display:flex; gap:8px; margin-bottom:24px; flex-wrap:wrap;
     border-bottom:2px solid var(--border);
@@ -122,11 +133,11 @@
   label{display:block; font-size:13px; font-weight:600; color:var(--primary); margin-bottom:6px;}
   input, select, textarea{
     width:100%;
-    padding:12px 14px;
+    padding:11px 14px;
     border:1.5px solid var(--border);
     border-radius:10px;
     font-family:inherit;
-    font-size:16px;
+    font-size:15px;
     background:var(--surface-alt);
     color:var(--text);
     transition:.15s;
@@ -287,49 +298,6 @@
     border:1px solid var(--border); border-radius:999px; padding:3px 10px; font-size:11px; font-weight:700;
     margin:2px 4px 0 0;
   }
-  .grade-tag{
-    display:inline-block; background:var(--primary); color:#fff;
-    border-radius:999px; padding:3px 10px; font-size:11px; font-weight:700;
-    margin-top:6px;
-  }
-  .row3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;}
-  .divider{border-top:1.5px dashed var(--border); margin:18px 0;}
-  .hint{font-size:12px; color:var(--text-muted); margin-top:4px;}
-
-  /* ---------- mobile responsiveness ---------- */
-  @media(max-width:640px){
-    .row3{grid-template-columns:1fr;}
-    .topbar{padding:12px 14px; flex-wrap:wrap; gap:8px;}
-    .topbar .brand{font-size:17px;}
-    .topbar .user-box{gap:8px; font-size:12px; flex-wrap:wrap;}
-    .content{padding:16px 12px 40px;}
-    .card{padding:16px;}
-    .section-title{font-size:17px; margin-bottom:12px;}
-    .tabs{
-      flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch;
-      gap:4px; scrollbar-width:none;
-    }
-    .tabs::-webkit-scrollbar{display:none;}
-    .tab-btn{padding:10px 12px; font-size:13px; white-space:nowrap; flex:0 0 auto;}
-    .ticket{flex-direction:column;}
-    .ticket-main{padding:14px 16px;}
-    .ticket-stub{
-      width:100%; border-right:none; border-top:2px dashed var(--border);
-      flex-direction:row; justify-content:space-between; padding:12px 16px;
-    }
-    .ticket-stub::before, .ticket-stub::after{
-      right:auto; top:-9px; bottom:auto;
-    }
-    .ticket-stub::before{left:-9px;}
-    .ticket-stub::after{right:-9px; left:auto;}
-    .ticket-stub > div{width:100%; display:flex; align-items:center; justify-content:space-between; gap:10px;}
-    .ticket-stub .btn{width:auto;}
-    .auth-card{padding:26px 20px;}
-    .video-grid{grid-template-columns:1fr;}
-    .btn{padding:12px 18px; min-height:44px;}
-    .btn-sm{min-height:38px;}
-    .chip-check{padding:9px 14px; font-size:13px;}
-  }
 </style>
 </head>
 <body>
@@ -353,6 +321,24 @@
     G9:'الصف الثالث الإعدادي'
   };
 
+  var WEEKDAYS = [
+    {v:'0', label:'الأحد'},
+    {v:'1', label:'الاتنين'},
+    {v:'2', label:'الثلاثاء'},
+    {v:'3', label:'الأربعاء'},
+    {v:'4', label:'الخميس'},
+    {v:'5', label:'الجمعة'},
+    {v:'6', label:'السبت'}
+  ];
+  function weekdayLabel(v){
+    var w = WEEKDAYS.filter(function(x){ return x.v === String(v); })[0];
+    return w ? w.label : '';
+  }
+  function daysLabel(days){
+    if(!days || days.length === 0) return '';
+    return days.map(weekdayLabel).join(' و');
+  }
+
   var state = {
     ready:false,
     users:{},
@@ -368,7 +354,6 @@
     authRole:'student',
     dashTab:null,
     editingStudentEmail:null,
-    slotGradeFilter:'',
     error:''
   };
 
@@ -492,14 +477,11 @@
 
   function sortedSlots(){
     return state.slots.slice().sort(function(a,b){
-      return (a.date+a.time).localeCompare(b.date+b.time);
+      var da = Math.min.apply(null, (a.days||['9']).map(Number));
+      var db = Math.min.apply(null, (b.days||['9']).map(Number));
+      if(da !== db) return da - db;
+      return (a.time||'').localeCompare(b.time||'');
     });
-  }
-
-  function isFuture(slot){
-    var now = new Date();
-    var slotDt = new Date(slot.date + 'T' + slot.time);
-    return slotDt.getTime() >= now.getTime() - 60*1000;
   }
 
   function gradeOptionsHtml(selected){
@@ -733,6 +715,14 @@
     app.querySelectorAll('.tab-btn').forEach(function(b){
       b.addEventListener('click', async function(){
         state.dashTab = b.getAttribute('data-tab');
+        // نحدّث الشكل فورًا (تفعيل التاب + مؤشر تحميل) عشان الموقع محسوش
+        // إنه واقف وهو لسه بيجيب بيانات الامتحانات من السيرفر
+        app.querySelectorAll('.tab-btn').forEach(function(x){ x.classList.remove('active'); });
+        b.classList.add('active');
+        var holder = document.getElementById('tabContent');
+        if(state.dashTab === 'exams' && holder){
+          holder.innerHTML = '<div class="card" style="text-align:center; padding:40px 20px;"><div class="spinner"></div><div class="muted" style="margin-top:12px;">بيتم تحميل الامتحانات...</div></div>';
+        }
         if(state.dashTab === 'exams'){
           if(state.currentUser.role === 'teacher') await loadExamsForTeacher();
           else await loadExamsForStudent();
@@ -742,76 +732,49 @@
     });
   }
 
-  var WEEKDAYS = [
-    {v:6, l:'السبت'}, {v:0, l:'الأحد'}, {v:1, l:'الاتنين'}, {v:2, l:'التلات'},
-    {v:3, l:'الأربع'}, {v:4, l:'الخميس'}, {v:5, l:'الجمعة'}
-  ];
-
-  function durationOptionsHtml(selected){
-    var opts = [30,45,60,90];
-    var html = '';
-    opts.forEach(function(d){
-      html += '<option value="' + d + '"' + (String(d) === String(selected) ? ' selected' : '') + '>' + d + ' دقيقة</option>';
-    });
-    return html;
-  }
-
   function teacherSlotsHtml(){
     var html = '<div class="card">';
-    html += '<div class="section-title">🔁 توليد مواعيد أسبوعية متكررة</div>';
-    html += '<div class="muted" style="margin-bottom:14px;">مثلاً: حصص كل اتنين وخميس الساعة 5 لصف تاني إعدادي — هيتضافوا كمواعيد حقيقية تقدر تعدلها أو تحذفها بعدين.</div>';
-    html += '<form id="recurForm">';
-    html += '<div class="field"><label>الصف الدراسي</label><select id="r_grade" required><option value="">اختار الصف</option>' + gradeOptionsHtml(null) + '</select></div>';
-    html += '<div class="field"><label>أيام الحصص</label><div class="chip-group" id="dayChips">';
-    WEEKDAYS.forEach(function(d){
-      var checked = (d.v === 1 || d.v === 4) ? ' checked' : ''; // افتراضي: الاتنين والخميس
-      html += '<label class="chip-check' + (checked ? ' checked' : '') + '"><input type="checkbox" value="' + d.v + '" class="dayChk"' + checked + '> ' + d.l + '</label>';
+    html += '<div class="section-title">إضافة معاد حصة جديد</div>';
+    html += '<div class="muted" style="margin-bottom:14px;">المعاد بيتكرر كل أسبوع في نفس الأيام والساعة، وكل طلاب الصف المحدد يقدروا ينضموله (مفيش حد أقصى لعدد الطلاب).</div>';
+    html += '<form id="slotForm">';
+    html += '<div class="field"><label>الأيام (تقدر تختار أكتر من يوم)</label><div class="chip-group" id="slotDaysChips">';
+    WEEKDAYS.forEach(function(w){
+      html += '<label class="chip-check"><input type="checkbox" value="' + w.v + '" class="slotDayChk"> ' + w.label + '</label>';
     });
     html += '</div></div>';
-    html += '<div class="row3">';
-    html += '<div class="field"><label>الوقت</label><input type="time" id="r_time" value="17:00" required></div>';
-    html += '<div class="field"><label>مدة الحصة</label><select id="r_dur">' + durationOptionsHtml(60) + '</select></div>';
-    html += '<div class="field"><label>عدد الأسابيع</label><input type="number" id="r_weeks" min="1" max="12" value="4" required></div>';
-    html += '</div>';
-    html += '<div class="field"><label>تبدأ من تاريخ</label><input type="date" id="r_start" required></div>';
-    html += '<button type="submit" class="btn btn-accent btn-block">توليد المواعيد</button>';
-    html += '</form>';
-    html += '<div class="divider"></div>';
-    html += '<div class="section-title" style="font-size:16px;">إضافة ميعاد واحد يدويًا</div>';
-    html += '<form id="slotForm">';
-    html += '<div class="field"><label>الصف الدراسي</label><select id="s_grade" required><option value="">اختار الصف</option>' + gradeOptionsHtml(null) + '</select></div>';
     html += '<div class="row2">';
-    html += '<div class="field"><label>التاريخ</label><input type="date" id="s_date" required></div>';
     html += '<div class="field"><label>الوقت</label><input type="time" id="s_time" required></div>';
+    html += '<div class="field"><label>الصف الدراسي</label><select id="s_grade" required>' + gradeOptionsHtml(null) + '</select></div>';
     html += '</div>';
-    html += '<div class="field"><label>مدة الحصة</label><select id="s_dur">' + durationOptionsHtml(60) + '</select></div>';
-    html += '<button type="submit" class="btn btn-accent">إضافة الميعاد</button>';
+    html += '<div class="row2">';
+    html += '<div class="field"><label>مدة الحصة</label><select id="s_dur">';
+    html += '<option value="30">30 دقيقة</option><option value="45">45 دقيقة</option><option value="60" selected>60 دقيقة</option><option value="90">90 دقيقة</option>';
+    html += '</select></div>';
+    html += '<div class="field"><label>ملاحظة (اختياري)</label><input type="text" id="s_note" placeholder="مثال: قاعة 2"></div>';
+    html += '</div>';
+    html += '<button type="submit" class="btn btn-accent">إضافة المعاد</button>';
     html += '</form></div>';
 
     var slots = sortedSlots();
-    html += '<div class="card">';
-    html += '<div class="section-title">كل المواعيد (' + slots.length + ')</div>';
-    html += '<div class="field" style="max-width:280px;"><label>فلتر حسب الصف</label><select id="slotGradeFilter"><option value="">كل الصفوف</option>' + gradeOptionsHtml(state.slotGradeFilter || null) + '</select></div>';
-    var filtered = state.slotGradeFilter ? slots.filter(function(s){ return s.grade === state.slotGradeFilter; }) : slots;
-    if(filtered.length === 0){
-      html += emptyState('📅','لسه مفيش مواعيد' + (state.slotGradeFilter ? ' للصف ده' : ' مضافة'));
+    html += '<div class="card"><div class="section-title">كل معادات الحصص (' + slots.length + ')</div>';
+    if(slots.length === 0){
+      html += emptyState('📅','لسه مفيش معادات مضافة');
+      html += '<div style="text-align:center;"><button type="button" class="btn btn-sm" id="seedSlotsBtn" style="margin-top:10px;">توليد معادات تجريبية عشان تعدّلها</button></div>';
     } else {
-      filtered.forEach(function(s){
-        var bookedUser = s.studentEmail ? state.users[s.studentEmail] : null;
+      slots.forEach(function(s){
+        var joined = s.students || [];
         html += '<div class="ticket">';
         html += '<div class="ticket-main">';
-        html += '<div class="ticket-date">' + fmtDate(s.date) + '</div>';
-        html += '<div class="ticket-time">🕐 ' + esc(s.time) + ' — مدة ' + esc(s.duration) + ' دقيقة</div>';
-        if(s.grade){ html += '<div class="grade-tag">' + esc(GRADE_LABELS[s.grade] || s.grade) + '</div>'; }
-        if(bookedUser){
-          html += '<div class="muted" style="margin-top:6px;">محجوز بواسطة: <strong>' + esc(bookedUser.name) + '</strong> (' + esc(bookedUser.email) + ')</div>';
+        html += '<div class="ticket-date">' + daysLabel(s.days) + '</div>';
+        html += '<div class="ticket-time">🕐 ' + esc(s.time) + (s.duration ? ' — مدة ' + esc(s.duration) + ' دقيقة' : '') + '</div>';
+        html += '<div class="muted" style="margin-top:4px;">' + GRADE_LABELS[s.grade] + (s.note ? ' — ' + esc(s.note) : '') + '</div>';
+        html += '<div class="muted" style="margin-top:6px;">' + joined.length + ' طالب منضم' + (joined.length > 0 ? ':' : '') + '</div>';
+        if(joined.length > 0){
+          html += '<div class="muted" style="font-size:12px;">' + joined.map(function(em){ var u = state.users[em]; return esc(u ? u.name : em); }).join('، ') + '</div>';
         }
         html += '</div>';
-        html += '<div class="ticket-stub">';
-        html += '<div style="text-align:center;">';
-        html += '<div class="status-pill ' + (s.studentEmail ? 'status-booked' : 'status-open') + '">' + (s.studentEmail ? 'محجوز' : 'متاح') + '</div>';
-        html += '<button class="btn btn-sm btn-danger" style="margin-top:10px;" data-del="' + s.id + '">حذف</button>';
-        html += '</div></div></div>';
+        html += '<div class="ticket-stub"><button class="btn btn-sm btn-danger" data-del="' + s.id + '">حذف</button></div>';
+        html += '</div>';
       });
     }
     html += '</div>';
@@ -819,81 +782,50 @@
   }
 
   function bindTeacherSlots(){
-    var today = new Date().toISOString().slice(0,10);
-    var startEl = document.getElementById('r_start');
-    if(startEl && !startEl.value) startEl.value = today;
-
-    app.querySelectorAll('#dayChips .chip-check').forEach(function(chip){
-      chip.addEventListener('click', function(){
-        setTimeout(function(){
-          var cb = chip.querySelector('input');
-          chip.classList.toggle('checked', cb.checked);
-        }, 0);
-      });
-    });
-
-    var recurForm = document.getElementById('recurForm');
-    if(recurForm) recurForm.addEventListener('submit', async function(e){
-      e.preventDefault();
-      var grade = document.getElementById('r_grade').value;
-      var time = document.getElementById('r_time').value;
-      var dur = document.getElementById('r_dur').value;
-      var weeks = parseInt(document.getElementById('r_weeks').value, 10) || 4;
-      var start = document.getElementById('r_start').value;
-      var days = Array.prototype.slice.call(app.querySelectorAll('.dayChk:checked')).map(function(el){ return parseInt(el.value, 10); });
-      if(!grade){ showToast('اختار الصف الدراسي', 'err'); return; }
-      if(!start){ showToast('اختار تاريخ البداية', 'err'); return; }
-      if(days.length === 0){ showToast('اختار يوم واحد على الأقل', 'err'); return; }
-
-      var newSlots = [];
-      var cursor = new Date(start + 'T00:00:00');
-      var endDate = new Date(cursor.getTime());
-      endDate.setDate(endDate.getDate() + weeks * 7);
-      while(cursor.getTime() < endDate.getTime()){
-        if(days.indexOf(cursor.getDay()) !== -1){
-          var dateStr = cursor.toISOString().slice(0,10);
-          newSlots.push({id:uid(), date:dateStr, time:time, duration:dur, grade:grade, studentEmail:null});
-        }
-        cursor.setDate(cursor.getDate() + 1);
-      }
-      if(newSlots.length === 0){ showToast('مفيش تواريخ اتولدت، جرب تاني', 'err'); return; }
-
-      state.slots = state.slots.concat(newSlots);
-      var res = await apiPost('setSlots', {slots: state.slots});
-      if(res && res.ok){ showToast('اتضاف ' + newSlots.length + ' ميعاد بنجاح', 'ok'); renderTeacherDash(); }
-      else { showToast('حصلت مشكلة في الحفظ، حاول تاني', 'err'); }
+    app.querySelectorAll('#slotDaysChips .chip-check').forEach(function(chip){
+      var box = chip.querySelector('input');
+      box.addEventListener('change', function(){ chip.classList.toggle('checked', box.checked); });
     });
 
     var form = document.getElementById('slotForm');
     if(form) form.addEventListener('submit', async function(e){
       e.preventDefault();
-      var grade = document.getElementById('s_grade').value;
-      var date = document.getElementById('s_date').value;
+      var days = Array.prototype.slice.call(app.querySelectorAll('.slotDayChk:checked')).map(function(el){ return el.value; });
       var time = document.getElementById('s_time').value;
+      var grade = document.getElementById('s_grade').value;
       var dur = document.getElementById('s_dur').value;
-      if(!grade){ showToast('اختار الصف الدراسي', 'err'); return; }
-      if(!date || !time){ showToast('اختار التاريخ والوقت', 'err'); return; }
-      state.slots.push({id:uid(), date:date, time:time, duration:dur, grade:grade, studentEmail:null});
+      var note = document.getElementById('s_note').value.trim();
+      if(days.length === 0 || !time || !grade){ showToast('اختار يوم واحد على الأقل والوقت والصف', 'err'); return; }
+      state.slots.push({id:uid(), days:days, time:time, grade:grade, duration:dur, note:note, students:[]});
       var res = await apiPost('setSlots', {slots: state.slots});
-      if(res && res.ok){ showToast('اتضاف الميعاد', 'ok'); renderTeacherDash(); }
+      if(res && res.ok){ showToast('اتضاف المعاد', 'ok'); renderTeacherDash(); }
       else { showToast('حصلت مشكلة في الحفظ، حاول تاني', 'err'); }
-    });
-
-    var filterEl = document.getElementById('slotGradeFilter');
-    if(filterEl) filterEl.addEventListener('change', function(){
-      state.slotGradeFilter = filterEl.value;
-      renderTeacherDash();
     });
 
     app.querySelectorAll('[data-del]').forEach(function(b){
       b.addEventListener('click', async function(){
         var id = b.getAttribute('data-del');
-        if(!confirm('متأكد إنك عايز تحذف الميعاد ده؟')) return;
+        if(!confirm('متأكد إنك عايز تحذف المعاد ده؟')) return;
         state.slots = state.slots.filter(function(s){ return s.id !== id; });
         var res = await apiPost('setSlots', {slots: state.slots});
-        if(res && res.ok){ showToast('اتحذف الميعاد', 'ok'); renderTeacherDash(); }
+        if(res && res.ok){ showToast('اتحذف المعاد', 'ok'); renderTeacherDash(); }
         else { showToast('حصلت مشكلة في الحفظ، حاول تاني', 'err'); }
       });
+    });
+
+    var seedBtn = document.getElementById('seedSlotsBtn');
+    if(seedBtn) seedBtn.addEventListener('click', async function(){
+      var examples = [
+        {days:['1','4'], time:'15:00', grade: GRADES[0], duration:'60', note:''},
+        {days:['0','2'], time:'17:00', grade: GRADES[Math.min(1,GRADES.length-1)], duration:'60', note:''},
+        {days:['3','6'], time:'18:30', grade: GRADES[Math.min(3,GRADES.length-1)], duration:'60', note:''}
+      ];
+      examples.forEach(function(ex){
+        state.slots.push({id:uid(), days:ex.days, time:ex.time, grade:ex.grade, duration:ex.duration, note:ex.note, students:[]});
+      });
+      var res = await apiPost('setSlots', {slots: state.slots});
+      if(res && res.ok){ showToast('اتضافت معادات تجريبية، عدّلها زي ما يناسبك', 'ok'); renderTeacherDash(); }
+      else { showToast('حصلت مشكلة، حاول تاني', 'err'); }
     });
   }
 
@@ -1389,69 +1321,25 @@
 
   function studentBookHtml(){
     var myGrade = state.currentUser.grade;
-    var open = sortedSlots().filter(function(s){
-      return !s.studentEmail && isFuture(s) && (!s.grade || s.grade === myGrade);
-    });
-    var html = '<div class="card"><div class="section-title">المواعيد المتاحة' + (myGrade ? ' — ' + esc(GRADE_LABELS[myGrade] || myGrade) : '') + '</div>';
-    if(open.length === 0){
-      html += emptyState('📅','مفيش مواعيد متاحة دلوقتي، تابع الموقع كل شوية');
+    var relevant = sortedSlots().filter(function(s){ return !myGrade || s.grade === myGrade; });
+    var html = '<div class="card"><div class="section-title">معادات الحصص المتاحة لصفك</div>';
+    if(relevant.length === 0){
+      html += emptyState('📅','لسه مفيش معادات حصص متاحة لصفك، تابع الموقع كل شوية');
     } else {
-      open.forEach(function(s){
+      relevant.forEach(function(s){
+        var joined = (s.students || []).indexOf(state.currentUser.email) !== -1;
         html += '<div class="ticket">';
         html += '<div class="ticket-main">';
-        html += '<div class="ticket-date">' + fmtDate(s.date) + '</div>';
-        html += '<div class="ticket-time">🕐 ' + esc(s.time) + ' — مدة ' + esc(s.duration) + ' دقيقة</div>';
-        html += '</div>';
-        html += '<div class="ticket-stub"><button class="btn btn-sm btn-accent" data-book="' + s.id + '">احجز</button></div>';
-        html += '</div>';
-      });
-    }
-    html += '</div>';
-    return html;
-  }
-
-  function bindStudentBook(){
-    app.querySelectorAll('[data-book]').forEach(function(b){
-      b.addEventListener('click', async function(){
-        var id = b.getAttribute('data-book');
-        var slot = state.slots.find(function(s){ return s.id === id; });
-        if(!slot || slot.studentEmail){ showToast('للأسف الميعاد ده اتحجز', 'err'); renderStudentDash(); return; }
-        // الحجز بيتم جوه السيرفر بقفل - لو طالبين ضغطوا "احجز" في نفس اللحظة
-        // بالظبط، واحد بس اللي هيعدي والتاني هياخد رسالة إن الميعاد اتحجز
-        var res = await apiPost('bookSlot', {slotId:id, studentEmail: state.currentUser.email});
-        if(!res || !res.ok){
-          showToast((res && res.error) ? res.error : 'للأسف الميعاد ده اتحجز', 'err');
-          await loadAll();
-          renderStudentDash();
-          return;
-        }
-        state.slots = res.slots || state.slots;
-        state.currentUser.hasEverBooked = true;
-        state.users[state.currentUser.email] = state.currentUser;
-        showToast('تم حجز الميعاد بنجاح ✅', 'ok');
-        renderStudentDash();
-      });
-    });
-  }
-
-  function studentMineHtml(){
-    var mine = sortedSlots().filter(function(s){ return s.studentEmail === state.currentUser.email; });
-    var html = '<div class="card"><div class="section-title">مواعيدي المحجوزة</div>';
-    if(mine.length === 0){
-      html += emptyState('🗓️','لسه معملتش أي حجز');
-    } else {
-      mine.forEach(function(s){
-        var future = isFuture(s);
-        html += '<div class="ticket">';
-        html += '<div class="ticket-main">';
-        html += '<div class="ticket-date">' + fmtDate(s.date) + '</div>';
-        html += '<div class="ticket-time">🕐 ' + esc(s.time) + ' — مدة ' + esc(s.duration) + ' دقيقة</div>';
+        html += '<div class="ticket-date">' + daysLabel(s.days) + '</div>';
+        html += '<div class="ticket-time">🕐 ' + esc(s.time) + (s.duration ? ' — مدة ' + esc(s.duration) + ' دقيقة' : '') + '</div>';
+        if(s.note) html += '<div class="muted" style="margin-top:4px;">' + esc(s.note) + '</div>';
         html += '</div>';
         html += '<div class="ticket-stub">';
-        if(future){
-          html += '<button class="btn btn-sm btn-danger" data-cancel="' + s.id + '">إلغاء</button>';
+        if(joined){
+          html += '<div style="text-align:center;"><div class="status-pill status-booked">منضم ✅</div>';
+          html += '<button class="btn btn-sm btn-danger" style="margin-top:8px;" data-leave="' + s.id + '">إلغاء</button></div>';
         } else {
-          html += '<div class="status-pill status-open">تم الحضور</div>';
+          html += '<button class="btn btn-sm btn-accent" data-join="' + s.id + '">انضم للحصة</button>';
         }
         html += '</div></div>';
       });
@@ -1460,15 +1348,66 @@
     return html;
   }
 
-  function bindStudentMine(){
-    app.querySelectorAll('[data-cancel]').forEach(function(b){
+  function bindStudentBook(){
+    app.querySelectorAll('[data-join]').forEach(function(b){
       b.addEventListener('click', async function(){
-        var id = b.getAttribute('data-cancel');
-        if(!confirm('متأكد إنك عايز تلغي الحجز ده؟')) return;
-        var res = await apiPost('cancelSlot', {slotId:id});
+        var id = b.getAttribute('data-join');
+        var res = await apiPost('joinSlot', {slotId:id, studentEmail: state.currentUser.email});
         if(res && res.ok){
           state.slots = res.slots || state.slots;
-          showToast('اتلغى الحجز', 'ok'); renderStudentDash();
+          showToast('اتضفت للحصة ✅', 'ok');
+          renderStudentDash();
+        } else {
+          showToast((res && res.error) ? res.error : 'حصلت مشكلة، حاول تاني', 'err');
+        }
+      });
+    });
+    app.querySelectorAll('[data-leave]').forEach(function(b){
+      b.addEventListener('click', async function(){
+        var id = b.getAttribute('data-leave');
+        if(!confirm('متأكد إنك عايز تلغي انضمامك للحصة دي؟')) return;
+        var res = await apiPost('leaveSlot', {slotId:id, studentEmail: state.currentUser.email});
+        if(res && res.ok){
+          state.slots = res.slots || state.slots;
+          showToast('اتلغى الانضمام', 'ok');
+          renderStudentDash();
+        } else {
+          showToast('حصلت مشكلة، حاول تاني', 'err');
+        }
+      });
+    });
+  }
+
+  function studentMineHtml(){
+    var mine = sortedSlots().filter(function(s){ return (s.students || []).indexOf(state.currentUser.email) !== -1; });
+    var html = '<div class="card"><div class="section-title">حصصي</div>';
+    if(mine.length === 0){
+      html += emptyState('🗓️','لسه منضمش لأي حصة');
+    } else {
+      mine.forEach(function(s){
+        html += '<div class="ticket">';
+        html += '<div class="ticket-main">';
+        html += '<div class="ticket-date">' + daysLabel(s.days) + '</div>';
+        html += '<div class="ticket-time">🕐 ' + esc(s.time) + (s.duration ? ' — مدة ' + esc(s.duration) + ' دقيقة' : '') + '</div>';
+        if(s.note) html += '<div class="muted" style="margin-top:4px;">' + esc(s.note) + '</div>';
+        html += '</div>';
+        html += '<div class="ticket-stub"><button class="btn btn-sm btn-danger" data-leave="' + s.id + '">إلغاء</button></div>';
+        html += '</div>';
+      });
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function bindStudentMine(){
+    app.querySelectorAll('[data-leave]').forEach(function(b){
+      b.addEventListener('click', async function(){
+        var id = b.getAttribute('data-leave');
+        if(!confirm('متأكد إنك عايز تلغي انضمامك للحصة دي؟')) return;
+        var res = await apiPost('leaveSlot', {slotId:id, studentEmail: state.currentUser.email});
+        if(res && res.ok){
+          state.slots = res.slots || state.slots;
+          showToast('اتلغى الانضمام', 'ok'); renderStudentDash();
         } else {
           showToast('حصلت مشكلة، حاول تاني', 'err');
         }
@@ -1542,10 +1481,16 @@
 
   function bindStudentExams(){
     app.querySelectorAll('[data-start]').forEach(function(b){
-      b.addEventListener('click', function(){ startExamFlow(b.getAttribute('data-start')); });
+      b.addEventListener('click', function(){
+        b.disabled = true; b.textContent = 'بيتم التحميل...';
+        startExamFlow(b.getAttribute('data-start'));
+      });
     });
     app.querySelectorAll('[data-continue]').forEach(function(b){
-      b.addEventListener('click', function(){ startExamFlow(b.getAttribute('data-continue')); });
+      b.addEventListener('click', function(){
+        b.disabled = true; b.textContent = 'بيتم التحميل...';
+        startExamFlow(b.getAttribute('data-continue'));
+      });
     });
   }
 
@@ -1618,6 +1563,7 @@
     var submitBtn = document.getElementById('submitExamBtn');
     if(submitBtn) submitBtn.addEventListener('click', function(){
       if(!confirm('متأكد إنك عايز تسلّم الامتحان؟ مش هتقدر تعدّل بعد كده.')) return;
+      submitBtn.disabled = true; submitBtn.textContent = 'بيتم التسليم...';
       finishExam();
     });
   }
